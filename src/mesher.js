@@ -121,7 +121,9 @@ function box(buf, idx, bx, by, bz, x0, y0, z0, x1, y1, z1, layers, mask, tint, f
 
 function cube(id, meta, idx, x, y, z, d, col) {
   const buf = d.transl ? TRN : OPQ;
-  const faces = d.faces;
+  let faces = d.faces;
+  if (d.logFaces) { const lf = d.logFaces[meta & 3]; if (lf) faces = lf; }
+  else if (d.metaFaces) { const mf = d.metaFaces(meta); if (mf) faces = mf; }
   const front = d.front >= 0 ? FACING_TO_FACE[meta & 3] : -1;
   const fl = d.anim | (d.cutout && !isLeaves(id) ? 4 : 0);
   const X = (x + 1) * 256, Y = (y + 1) * 256, Z = (z + 1) * 256;
@@ -391,6 +393,165 @@ function special(id, meta, idx, x, y, z, d, col, wx, wz) {
       L6[outer] = d.tex.end;
       const rot = [2, 3, 0, 1][f];
       box(OPQ, idx, x, y, z, 0, 0, 0, 1, 9 * p16, 1, L6, 63 & ~(1 << inner), 0xffffff, 4, rot);
+      break;
+    }
+    case SH.CARPET: {
+      const L = d.metaFaces ? (d.metaFaces(meta) || d.faces) : d.faces;
+      box(OPQ, idx, x, y, z, 0, 0, 0, 1, 2 * p16, 1, L, 63, 0xffffff, fl);
+      break;
+    }
+    case SH.WALL:
+      box(OPQ, idx, x, y, z, 0, 0, 0, 1, 0.5, 1, d.faces, 63, 0xffffff, fl);
+      break;
+    case SH.TRAPDOOR: {
+      const f = meta & 3, open = meta & 4, y0 = meta & 8 ? 1 - p16 : 0;
+      if (!open) box(OPQ, idx, x, y, z, 0, y0, 0, 1, y0 + p16, 1, d.faces, 63, 0xffffff, fl);
+      else if (f === 0) box(OPQ, idx, x, y, z, 0, 0, 0, p16, 1, 1, d.faces, 63, 0xffffff, fl);
+      else if (f === 1) box(OPQ, idx, x, y, z, 1 - p16, 0, 0, 1, 1, 1, d.faces, 63, 0xffffff, fl);
+      else if (f === 2) box(OPQ, idx, x, y, z, 0, 0, 1 - p16, 1, 1, 1, d.faces, 63, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0, 0, 0, p16, 1, 1, d.faces, 63, 0xffffff, fl);
+      break;
+    }
+    case SH.GATE: {
+      const f = meta & 3, open = meta & 4, L = d.faces;
+      if (!open) {
+        if (f === 0) box(OPQ, idx, x, y, z, p16, 0, 13 * p16, 15 * p16, 1, 1, L, 63, 0xffffff, fl);
+        else if (f === 1) box(OPQ, idx, x, y, z, 0, 0, p16, 3 * p16, 1, 15 * p16, L, 63, 0xffffff, fl);
+        else if (f === 2) box(OPQ, idx, x, y, z, p16, 0, 0, 15 * p16, 1, 3 * p16, L, 63, 0xffffff, fl);
+        else box(OPQ, idx, x, y, z, 13 * p16, 0, p16, 1, 1, 15 * p16, L, 63, 0xffffff, fl);
+      } else {
+        if (f === 0) box(OPQ, idx, x, y, z, 13 * p16, 0, p16, 1, 1, 15 * p16, L, 63, 0xffffff, fl);
+        else if (f === 1) box(OPQ, idx, x, y, z, p16, 0, 0, 15 * p16, 1, 3 * p16, L, 63, 0xffffff, fl);
+        else if (f === 2) box(OPQ, idx, x, y, z, 0, 0, p16, 3 * p16, 1, 15 * p16, L, 63, 0xffffff, fl);
+        else box(OPQ, idx, x, y, z, p16, 0, 13 * p16, 15 * p16, 1, 1, L, 63, 0xffffff, fl);
+      }
+      break;
+    }
+    case SH.BUTTON: {
+      const f = meta & 3, h = meta & 8 ? p16 / 2 : 2 * p16, L = d.faces;
+      if (f === 0) box(OPQ, idx, x, y, z, 5 * p16, 5 * p16, 1 - h, 11 * p16, 11 * p16, 1, L, 63, 0xffffff, fl);
+      else if (f === 1) box(OPQ, idx, x, y, z, 1 - h, 5 * p16, 5 * p16, 1, 11 * p16, 11 * p16, L, 63, 0xffffff, fl);
+      else if (f === 2) box(OPQ, idx, x, y, z, 5 * p16, 5 * p16, 0, 11 * p16, 11 * p16, h, L, 63, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0, 5 * p16, 5 * p16, h, 11 * p16, 11 * p16, L, 63, 0xffffff, fl);
+      break;
+    }
+    case SH.SIGNW: {
+      const f = meta & 3, L = d.faces;
+      if (f === 0) box(OPQ, idx, x, y, z, p16, 3 * p16, 1 - 2 * p16, 15 * p16, 13 * p16, 1, L, 63, 0xffffff, fl);
+      else if (f === 1) box(OPQ, idx, x, y, z, 1 - 2 * p16, 3 * p16, p16, 1, 13 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      else if (f === 2) box(OPQ, idx, x, y, z, p16, 3 * p16, 0, 15 * p16, 13 * p16, 2 * p16, L, 63, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0, 3 * p16, p16, 2 * p16, 13 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      break;
+    }
+    case SH.BANNERW: {
+      const f = meta & 3, L = d.faces;
+      if (f === 0) box(OPQ, idx, x, y, z, 2 * p16, p16, 1 - 2 * p16, 14 * p16, 15 * p16, 1, L, 63, 0xffffff, fl);
+      else if (f === 1) box(OPQ, idx, x, y, z, 1 - 2 * p16, p16, 2 * p16, 1, 15 * p16, 14 * p16, L, 63, 0xffffff, fl);
+      else if (f === 2) box(OPQ, idx, x, y, z, 2 * p16, p16, 0, 14 * p16, 15 * p16, 2 * p16, L, 63, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0, p16, 2 * p16, 2 * p16, 15 * p16, 14 * p16, L, 63, 0xffffff, fl);
+      break;
+    }
+    case SH.FLOWER_POT: {
+      box(OPQ, idx, x, y, z, 3 * p16, 0, 3 * p16, 13 * p16, 10 * p16, 13 * p16, d.faces, 63, 0xffffff, fl);
+      const layer = (d.plantLayers && (d.plantLayers[meta & 7] || d.plantLayers[0])) || 0;
+      const light = pl[idx];
+      quv.set([0, 1, 1, 1, 1, 0, 0, 0]);
+      qp.set([x + 0.5, y + 10 * p16, z + 0.5, x + 0.5, y + 1, z - 0.5, x - 0.5, y + 1, z - 0.5, x - 0.5, y + 10 * p16, z + 0.5]);
+      quad(OPQ, layer, qp, quv, light, 1, 0xffffff, 4, true);
+      qp.set([x + 0.5, y + 10 * p16, z - 0.5, x - 0.5, y + 10 * p16, z + 0.5, x - 0.5, y + 1, z + 0.5, x + 0.5, y + 1, z - 0.5]);
+      quad(OPQ, layer, qp, quv, light, 1, 0xffffff, 4, true);
+      break;
+    }
+    case SH.CAMPFIRE: {
+      const lit = !meta, light = pl[idx];
+      const logLayer = lit ? d.tex.logLit : d.tex.log;
+      quv.set([0, 1, 1, 1, 1, 0, 0, 0]);
+      qp.set([x + 0.5, y, z + 0.5, x + 0.5, y + 4 * p16, z - 0.5, x - 0.5, y + 4 * p16, z - 0.5, x - 0.5, y, z + 0.5]);
+      quad(OPQ, logLayer, qp, quv, light, 1, 0xffffff, 4, true);
+      qp.set([x + 0.5, y, z - 0.5, x - 0.5, y, z + 0.5, x - 0.5, y + 4 * p16, z + 0.5, x + 0.5, y + 4 * p16, z - 0.5]);
+      quad(OPQ, logLayer, qp, quv, light, 1, 0xffffff, 4, true);
+      if (lit) {
+        const flayer = d.tex.fire, lo = 4 * p16;
+        qp.set([x + 0.5, y + lo, z + 0.5, x + 0.5, y + 1, z - 0.5, x - 0.5, y + 1, z - 0.5, x - 0.5, y + lo, z + 0.5]);
+        quad(OPQ, flayer, qp, quv, light, 1, 0xffffff, 7, true);
+        qp.set([x + 0.5, y + lo, z - 0.5, x - 0.5, y + lo, z + 0.5, x - 0.5, y + 1, z + 0.5, x + 0.5, y + 1, z - 0.5]);
+        quad(OPQ, flayer, qp, quv, light, 1, 0xffffff, 7, true);
+      }
+      break;
+    }
+    case SH.PICKLE: {
+      const h = 0.45 + (meta & 3) * 0.15, light = pl[idx];
+      quv.set([0, 1, 1, 1, 1, 0, 0, 0]);
+      qp.set([x + 0.5, y, z + 0.5, x + 0.5, y + h, z - 0.5, x - 0.5, y + h, z - 0.5, x - 0.5, y, z + 0.5]);
+      quad(OPQ, d.faces[0], qp, quv, light, 1, 0xffffff, 4, true);
+      qp.set([x + 0.5, y, z - 0.5, x - 0.5, y, z + 0.5, x - 0.5, y + h, z + 0.5, x + 0.5, y + h, z - 0.5]);
+      quad(OPQ, d.faces[0], qp, quv, light, 1, 0xffffff, 4, true);
+      break;
+    }
+    case SH.PRESSURE: {
+      const h = meta & 1 ? p16 / 2 : p16;
+      box(OPQ, idx, x, y, z, 0, 0, 0, 1, h, 1, d.faces, 63, 0xffffff, fl);
+      break;
+    }
+    case SH.FURN: {
+      const L = L6;
+      if (id === B.BARREL) {
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = (meta & 4) ? d.tex.topOpen : d.tex.top; L[3] = d.tex.bottom;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, 1, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.BELL) {
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = d.tex.top; L[3] = d.tex.bottom;
+        box(OPQ, idx, x, y, z, 3 * p16, 0, 3 * p16, 13 * p16, 7 * p16, 13 * p16, L, 63 & ~8, 0xffffff, fl);
+        box(OPQ, idx, x, y, z, 5 * p16, 7 * p16, 5 * p16, 11 * p16, 15 * p16, 11 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.BLAST_FURNACE || id === B.SMOKER) {
+        const f = meta & 3;
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = d.tex.top;
+        if (id === B.SMOKER) L[3] = d.tex.bottom;
+        L[FACING_TO_FACE[f]] = (meta & 8) ? d.tex.frontLit : d.tex.front;
+        box(OPQ, idx, x, y, z, 0, 0, 0, 1, 1, 1, L, 63, 0xffffff, fl);
+      } else if (id === B.BREWING_STAND) {
+        L.fill(d.tex.stand);
+        box(OPQ, idx, x, y, z, 0, 0, 0, 2 * p16, 1, 2 * p16, L, 63, 0xffffff, fl);
+        box(OPQ, idx, x, y, z, 14 * p16, 0, 0, 1, 1, 2 * p16, L, 63, 0xffffff, fl);
+        box(OPQ, idx, x, y, z, 0, 0, 14 * p16, 2 * p16, 1, 1, L, 63, 0xffffff, fl);
+        box(OPQ, idx, x, y, z, 14 * p16, 0, 14 * p16, 1, 1, 1, L, 63, 0xffffff, fl);
+        box(OPQ, idx, x, y, z, 6 * p16, 8 * p16, 6 * p16, 10 * p16, 1, 10 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.CARTOGRAPHY_TABLE) {
+        const f = meta & 3, fc = FACING_TO_FACE[f];
+        L[0] = L[1] = L[4] = L[5] = d.tex.side1; L[2] = d.tex.top;
+        L[fc] = d.tex.front; L[fc ^ 1] = d.tex.side2;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, 10 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.FLETCHING_TABLE || id === B.LOOM || id === B.SMITHING_TABLE) {
+        const f = meta & 3, fc = FACING_TO_FACE[f];
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = d.tex.top;
+        if (d.tex.bottom >= 0) L[3] = d.tex.bottom;
+        L[fc] = d.tex.front;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, id === B.LOOM ? 14 * p16 : 12 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.GRINDSTONE) {
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = d.tex.top;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, 12 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.STONECUTTER) {
+        const f = meta & 3, fc = FACING_TO_FACE[f];
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = d.tex.top;
+        L[fc] = d.tex.front;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, 12 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.COMPOSTER) {
+        const st = meta & 7;
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[3] = d.tex.bottom;
+        L[2] = st >= 7 ? d.tex.ready : st >= 4 ? d.tex.compost : d.tex.top;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, st >= 7 ? 14 * p16 : st >= 4 ? 12 * p16 : 10 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.CAULDRON) {
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[3] = d.tex.bottom;
+        L[2] = meta === 1 ? d.tex.water : meta === 2 ? d.tex.lava : d.tex.inner;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, 12 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      } else if (id === B.LANTERN) {
+        L.fill(d.faces[0]);
+        box(TRN, idx, x, y, z, 5 * p16, 2 * p16, 5 * p16, 11 * p16, 9 * p16, 11 * p16, L, 63, 0xffffff, 4);
+      } else if (id === B.LECTERN) {
+        const f = meta & 3, fc = FACING_TO_FACE[f];
+        L[0] = L[1] = L[4] = L[5] = d.tex.side; L[2] = d.tex.top; L[3] = d.tex.bottom;
+        L[fc] = d.tex.front;
+        box(OPQ, idx, x, y, z, p16, 0, p16, 15 * p16, 12 * p16, 15 * p16, L, 63, 0xffffff, fl);
+      }
       break;
     }
   }

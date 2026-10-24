@@ -83,8 +83,8 @@ export function treeShape(type, rnd) {
   }
   return out;
 }
-export const TREE_LOG = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG];
-export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES];
+export const TREE_LOG = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.ACACIA_LOG, B.JUNGLE_LOG];
+export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.ACACIA_LEAVES, B.JUNGLE_LEAVES];
 
 const PAD = 5;
 const PW = CH + PAD * 2;

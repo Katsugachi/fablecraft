@@ -28,6 +28,8 @@ export const ANIM_FRAMES = 16;
 export const SH = {
   CUBE: 0, CROSS: 1, TORCH: 2, SLAB: 3, STAIRS: 4, FLUID: 5, CACTUS: 6, FARMLAND: 7,
   DOOR: 8, LADDER: 9, SNOW: 10, CROP: 11, FENCE: 12, CHEST: 13, BED: 14, FIRE: 15,
+  CARPET: 16, WALL: 17, TRAPDOOR: 18, GATE: 19, BUTTON: 20, SIGNW: 21, BANNERW: 22,
+  FLOWER_POT: 23, CAMPFIRE: 24, PICKLE: 25, PRESSURE: 26, FURN: 27,
 };
 
 export const blocks = new Array(256).fill(null);
@@ -60,7 +62,8 @@ function def(id, key, name, o = {}) {
     faces[2] = texId(t.top ?? t.all ?? t.side);
     faces[3] = texId(t.bottom ?? t.top ?? t.all ?? t.side);
   }
-  const nonSolidShape = shape === SH.CROSS || shape === SH.TORCH || shape === SH.FLUID || shape === SH.CROP || shape === SH.FIRE || shape === SH.SNOW;
+  const nonSolidShape = shape === SH.CROSS || shape === SH.TORCH || shape === SH.FLUID || shape === SH.CROP || shape === SH.FIRE || shape === SH.SNOW ||
+    shape === SH.CARPET || shape === SH.CAMPFIRE || shape === SH.PICKLE || shape === SH.PRESSURE || shape === SH.BUTTON || shape === SH.SIGNW || shape === SH.BANNERW;
   const opaque = shape === SH.CUBE && !o.cutout && !o.transl;
   const d = {
     id, key, name, shape, faces,
@@ -94,6 +97,8 @@ function def(id, key, name, o = {}) {
     selBox: o.sel ?? null,
     cullSame: !!o.cullSame,
     term: !!o.term,
+    log: !!o.log,        // log axis: meta 1=x, 2=z (0=y)
+    metaFaces: o.metaFaces || null, // (meta) => Uint16Array(6) | null
   };
   if (typeof t === 'object') for (const k in t) d.tex[k] = texId(t[k]);
   blocks[id] = d;
@@ -225,13 +230,156 @@ export const WOOL_COLORS = [
 WOOL_COLORS.forEach(([k, n], i) => def(96 + i, k + '_wool', n + ' Wool', { tex: 'wool_' + i, h: 0.8, t: 'shears', snd: 'cloth', flam: 1 }));
 B.WOOL = 96;
 
+// ===========================================================================
+// Modern (1.21.5-era) block set — village + worldgen waves (iterations 1-2)
+// Real vanilla textures via src/textures_real.js.
+// ===========================================================================
+// Colour variants are individual block ids (192+) — the item system is id-based,
+// so each terracotta/carpet/glazed/pane colour gets its own block.
+// 82 (free id) + 112..191 + colour families 192..242
+{
+  def(82, 'terracotta', 'Terracotta', { h: 2, t: PICK, need: 1, resist: 30 });
+
+  def(114, 'packed_ice', 'Packed Ice', { tex: 'packed_ice', h: 0.9, t: PICK, snd: 'glass' });
+  def(115, 'blue_ice', 'Blue Ice', { tex: 'blue_ice', transl: 1, opac: 2, h: 0.9, t: PICK, snd: 'glass', slip: 0.98, cullSame: 1 });
+  def(116, 'sea_pickle', 'Sea Pickle', { shape: SH.PICKLE, tex: 'sea_pickle', cutout: 1, emit: 14, h: 0.4, t: 'shears', snd: 'glass' });
+  def(117, 'campfire', 'Campfire', { shape: SH.CAMPFIRE, tex: { log: 'campfire_log', logLit: 'campfire_log_lit', fire: 'fire_0' }, cutout: 1, emit: 14, h: 0, snd: 'wood', noItem: 1, ticks: 1, flat: 'campfire_log' });
+  def(118, 'lantern', 'Lantern', { shape: SH.FURN, tex: 'lantern', cutout: 1, emit: 14, h: 0.6, t: PICK, need: 1, snd: 'metal' });
+  def(119, 'cauldron', 'Cauldron', { shape: SH.FURN, tex: { side: 'cauldron_side', inner: 'cauldron_inner', top: 'cauldron_top', bottom: 'cauldron_bottom', water: 'water_0', lava: 'lava_0' }, h: 6, t: PICK, need: 1, snd: 'stone' });
+  def(120, 'melon', 'Melon', { tex: { top: 'melon_top', side: 'melon_side' }, h: 1, t: null, snd: 'wood' });
+  def(121, 'melon_stem', 'Melon Stem', plant('melon_stem'));
+  def(122, 'pumpkin_stem', 'Pumpkin Stem', plant('pumpkin_stem'));
+  def(123, 'dirt_path', 'Dirt Path', { tex: { top: 'dirt_path_top', bottom: 'dirt', side: 'dirt_path_side' }, h: 0.6, t: SHOVEL, snd: 'gravel', ticks: 1 });
+  def(124, 'hay_block', 'Hay Bale', { tex: { top: 'hay_block_top', side: 'hay_block_side' }, h: 0.5, t: 'shears', snd: 'cloth', flam: 1 });
+  def(125, 'flower_pot', 'Flower Pot', { shape: SH.FLOWER_POT, tex: 'flower_pot', cutout: 1, h: 1, t: SHOVEL, snd: 'stone' });
+  def(126, 'sign', 'Spruce Sign', { shape: SH.SIGNW, tex: 'sign', cutout: 1, h: 1, t: AXE, snd: 'wood', flam: 1 });
+  def(127, 'banner', 'Brown Wall Banner', { shape: SH.BANNERW, tex: 'banner', cutout: 1, h: 0.6, t: 'shears', snd: 'cloth' });
+  def(128, 'cobblestone_wall', 'Cobblestone Wall', { shape: SH.WALL, tex: 'cobblestone_wall', cutout: 1, h: 2, t: PICK, need: 1, resist: 30, snd: 'stone' });
+  def(129, 'diorite_wall', 'Diorite Wall', { shape: SH.WALL, tex: 'diorite_wall', cutout: 1, h: 1.5, t: PICK, need: 1, resist: 30 });
+  def(130, 'granite_wall', 'Granite Wall', { shape: SH.WALL, tex: 'granite_wall', cutout: 1, h: 1.5, t: PICK, need: 1, resist: 30 });
+  def(131, 'sandstone_wall', 'Sandstone Wall', { shape: SH.WALL, tex: 'sandstone_wall', cutout: 1, h: 0.8, t: PICK, need: 1, resist: 30 });
+  def(132, 'diorite_stairs', 'Diorite Stairs', stairs({ tex: 'diorite', h: 1.5, t: PICK, need: 1 }));
+  def(133, 'diorite_slab', 'Diorite Slab', slab({ tex: 'diorite', h: 1.5, t: PICK, need: 1, full: 79 }));
+  def(134, 'granite_stairs', 'Granite Stairs', stairs({ tex: 'granite', h: 1.5, t: PICK, need: 1 }));
+  def(249, 'granite_slab', 'Granite Slab', slab({ tex: 'granite', h: 1.5, t: PICK, need: 1, full: 78 }));
+  def(250, 'stripped_acacia_wood', 'Stripped Acacia Wood', { tex: 'stripped_acacia_wood', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  { const d = blocks[250]; d.log = 1; d.logFaces = [null, new Uint16Array([d.faces[2], d.faces[2], d.faces[0], d.faces[0], d.faces[0], d.faces[0]]), new Uint16Array([d.faces[0], d.faces[0], d.faces[0], d.faces[0], d.faces[2], d.faces[2]])]; }
+  def(135, 'smooth_sandstone', 'Smooth Sandstone', { tex: 'smooth_sandstone', h: 2, t: PICK, need: 1, resist: 30 });
+  def(136, 'smooth_sandstone_slab', 'Smooth Sandstone Slab', slab({ tex: { top: 'smooth_sandstone', side: 'smooth_sandstone_slab_side', all: 'smooth_sandstone_slab_side' }, h: 2, t: PICK, need: 1, full: 135 }));
+  def(137, 'smooth_sandstone_stairs', 'Smooth Sandstone Stairs', stairs({ tex: 'smooth_sandstone', h: 2, t: PICK, need: 1 }));
+  def(138, 'cut_sandstone', 'Cut Sandstone', { tex: 'cut_sandstone', h: 2, t: PICK, need: 1, resist: 30 });
+  def(139, 'chiseled_sandstone', 'Chiseled Sandstone', { tex: 'chiseled_sandstone', h: 2, t: PICK, need: 1, resist: 30 });
+  def(140, 'glass_pane', 'Glass Pane', { shape: SH.CUBE, tex: 'glass_pane', cutout: 1, cullSame: 1, h: 0.3, snd: 'glass' });
+  def(141, 'iron_bars', 'Iron Bars', { shape: SH.CUBE, tex: 'iron_bars', cutout: 1, cullSame: 1, h: 5, t: PICK, lv: 1, need: 1, snd: 'metal' });
+  def(142, 'barrel', 'Barrel', { shape: SH.FURN, tex: { side: 'barrel_side', top: 'barrel_top', topOpen: 'barrel_top_open', bottom: 'barrel_bottom' }, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(143, 'bell', 'Bell', { shape: SH.FURN, tex: { side: 'bell_side', top: 'bell_top', bottom: 'bell_bottom' }, h: 5, t: PICK, lv: 1, need: 1, snd: 'metal' });
+  def(144, 'blast_furnace', 'Blast Furnace', { shape: SH.FURN, tex: { top: 'blast_furnace_top', side: 'blast_furnace_side', front: 'blast_furnace_front', frontLit: 'blast_furnace_front_on' }, h: 3.5, t: PICK, need: 1, snd: 'stone' });
+  def(145, 'brewing_stand', 'Brewing Stand', { shape: SH.FURN, tex: { stand: 'brewing_stand', base: 'brewing_stand_base' }, cutout: 1, h: 1, t: PICK, snd: 'glass' });
+  def(146, 'cartography_table', 'Cartography Table', { shape: SH.FURN, tex: { top: 'cartography_table_top', front: 'cartography_table_side1', side1: 'cartography_table_side2', side2: 'cartography_table_side3' }, h: 2.5, t: AXE, snd: 'wood', flam: 1 });
+  def(147, 'composter', 'Composter', { shape: SH.FURN, tex: { side: 'composter_side', top: 'composter_top', compost: 'composter_compost', ready: 'composter_ready', bottom: 'composter_bottom' }, h: 0.6, t: 'shears', snd: 'wood' });
+  def(148, 'fletching_table', 'Fletching Table', { shape: SH.FURN, tex: { top: 'fletching_table_top', front: 'fletching_table_front', side: 'fletching_table_side' }, h: 2.5, t: AXE, snd: 'wood', flam: 1 });
+  def(149, 'grindstone', 'Grindstone', { shape: SH.FURN, tex: { top: 'grindstone_round', side: 'grindstone_side' }, h: 2, t: PICK, need: 1, snd: 'stone' });
+  def(150, 'loom', 'Loom', { shape: SH.FURN, tex: { top: 'loom_top', front: 'loom_front', side: 'loom_side', bottom: 'loom_bottom' }, h: 2.5, t: AXE, snd: 'wood', flam: 1 });
+  def(151, 'smithing_table', 'Smithing Table', { shape: SH.FURN, tex: { top: 'smithing_table_top', front: 'smithing_table_front', side: 'smithing_table_side', bottom: 'smithing_table_bottom' }, h: 2.5, t: AXE, snd: 'wood', flam: 1 });
+  def(152, 'smoker', 'Smoker', { shape: SH.FURN, tex: { top: 'smoker_top', side: 'smoker_side', front: 'smoker_front', frontLit: 'smoker_front_on', bottom: 'smoker_bottom' }, h: 3.5, t: PICK, need: 1, snd: 'stone' });
+  def(153, 'stonecutter', 'Stonecutter', { shape: SH.FURN, tex: { top: 'stonecutter_top', front: 'stonecutter_front', side: 'stonecutter_side', bottom: 'stonecutter_bottom' }, h: 2, t: PICK, need: 1, snd: 'stone' });
+  def(154, 'door_spruce', 'Spruce Door', { shape: SH.DOOR, tex: { all: 'spruce_door_bottom', top: 'spruce_door_top', bottom: 'spruce_door_bottom' }, cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1, flat: 'spruce_door_bottom' });
+  def(155, 'spruce_fence', 'Spruce Fence', { shape: SH.FENCE, tex: 'spruce_fence', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(156, 'fence_gate_oak', 'Oak Fence Gate', { shape: SH.GATE, tex: 'oak_fence_gate', cutout: 1, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(157, 'fence_gate_spruce', 'Spruce Fence Gate', { shape: SH.GATE, tex: 'spruce_fence_gate', cutout: 1, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(158, 'fence_gate_acacia', 'Acacia Fence Gate', { shape: SH.GATE, tex: 'acacia_fence_gate', cutout: 1, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(159, 'fence_gate_jungle', 'Jungle Fence Gate', { shape: SH.GATE, tex: 'jungle_fence_gate', cutout: 1, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(160, 'pressure_plate_oak', 'Oak Pressure Plate', { shape: SH.PRESSURE, tex: 'oak_pressure_plate', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(161, 'pressure_plate_spruce', 'Spruce Pressure Plate', { shape: SH.PRESSURE, tex: 'spruce_pressure_plate', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(162, 'pressure_plate_acacia', 'Acacia Pressure Plate', { shape: SH.PRESSURE, tex: 'acacia_pressure_plate', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(163, 'pressure_plate_jungle', 'Jungle Pressure Plate', { shape: SH.PRESSURE, tex: 'jungle_pressure_plate', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(164, 'trapdoor_oak', 'Oak Trapdoor', { shape: SH.TRAPDOOR, tex: 'oak_trapdoor', cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1 });
+  def(165, 'trapdoor_spruce', 'Spruce Trapdoor', { shape: SH.TRAPDOOR, tex: 'spruce_trapdoor', cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1 });
+  def(166, 'trapdoor_acacia', 'Acacia Trapdoor', { shape: SH.TRAPDOOR, tex: 'acacia_trapdoor', cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1 });
+  def(167, 'trapdoor_jungle', 'Jungle Trapdoor', { shape: SH.TRAPDOOR, tex: 'jungle_trapdoor', cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1 });
+  def(168, 'button_jungle', 'Jungle Button', { shape: SH.BUTTON, tex: 'jungle_button', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(169, 'stone_button', 'Stone Button', { shape: SH.BUTTON, tex: 'button_stone', cutout: 1, h: 0.1, t: PICK, need: 1, snd: 'stone' });
+  def(170, 'button_oak', 'Oak Button', { shape: SH.BUTTON, tex: 'oak_button', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(171, 'button_spruce', 'Spruce Button', { shape: SH.BUTTON, tex: 'spruce_button', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(172, 'button_acacia', 'Acacia Button', { shape: SH.BUTTON, tex: 'acacia_button', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+
+  // acacia family
+  const aLog = def(173, 'acacia_log', 'Acacia Log', { tex: { top: 'acacia_log_top', side: 'acacia_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); aLog.log = 1;
+  const aWood = def(174, 'acacia_wood', 'Acacia Wood', { tex: 'acacia_wood', h: 2, t: AXE, snd: 'wood', flam: 1 }); aWood.log = 1;
+  def(175, 'acacia_planks', 'Acacia Planks', { tex: 'acacia_planks', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(176, 'acacia_leaves', 'Acacia Leaves', { tex: 'acacia_leaves', cutout: 1, opac: 1, h: 0.2, t: 'shears', snd: 'grass', tint: 4, color: 0x8a9a2b, flam: 1, ticks: 1 });
+  def(177, 'acacia_sapling', 'Acacia Sapling', plant('acacia_sapling'));
+  const sAcLog = def(178, 'stripped_acacia_log', 'Stripped Acacia Log', { tex: { top: 'stripped_acacia_log_top', side: 'stripped_acacia_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); sAcLog.log = 1;
+  const spWood = def(179, 'spruce_wood', 'Spruce Wood', { tex: 'spruce_wood', h: 2, t: AXE, snd: 'wood', flam: 1 }); spWood.log = 1;
+  const sSpLog = def(180, 'stripped_spruce_log', 'Stripped Spruce Log', { tex: { top: 'stripped_spruce_log_top', side: 'stripped_spruce_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); sSpLog.log = 1;
+  const sSpWood = def(181, 'stripped_spruce_wood', 'Stripped Spruce Wood', { tex: 'stripped_spruce_wood', h: 2, t: AXE, snd: 'wood', flam: 1 }); sSpWood.log = 1;
+  const sOaLog = def(182, 'stripped_oak_log', 'Stripped Oak Log', { tex: { top: 'stripped_oak_log_top', side: 'stripped_oak_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); sOaLog.log = 1;
+  const sOaWood = def(183, 'stripped_oak_wood', 'Stripped Oak Wood', { tex: 'stripped_oak_wood', h: 2, t: AXE, snd: 'wood', flam: 1 }); sOaWood.log = 1;
+  def(184, 'door_acacia', 'Acacia Door', { shape: SH.DOOR, tex: { all: 'acacia_door_bottom', top: 'acacia_door_top', bottom: 'acacia_door_bottom' }, cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1, flat: 'acacia_door_bottom' });
+  def(185, 'acacia_fence', 'Acacia Fence', { shape: SH.FENCE, tex: 'acacia_fence', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(186, 'slab_acacia', 'Acacia Slab', slab({ tex: { top: 'acacia_planks', side: 'acacia_slab_side', all: 'acacia_slab_side' }, h: 2, t: AXE, snd: 'wood', flam: 1, full: 175 }));
+  def(187, 'stairs_acacia', 'Acacia Stairs', stairs({ tex: 'acacia_planks', h: 2, t: AXE, snd: 'wood', flam: 1 }));
+  def(188, 'door_jungle', 'Jungle Door', { shape: SH.DOOR, tex: { all: 'jungle_door_bottom', top: 'jungle_door_top', bottom: 'jungle_door_bottom' }, cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1, flat: 'jungle_door_bottom' });
+  def(189, 'jungle_fence', 'Jungle Fence', { shape: SH.FENCE, tex: 'jungle_fence', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(190, 'slab_jungle', 'Jungle Slab', slab({ tex: { top: 'jungle_planks', side: 'jungle_slab_side', all: 'jungle_slab_side' }, h: 2, t: AXE, snd: 'wood', flam: 1, full: 0 }));
+  def(191, 'stairs_jungle', 'Jungle Stairs', stairs({ tex: 'jungle_planks', h: 2, t: AXE, snd: 'wood', flam: 1 }));
+
+  // log axis face permutations for existing + new logs
+  const logIds = [15, 54, 57, 173, 174, 178, 179, 180, 181, 182, 183];
+  for (const li of logIds) {
+    const d = blocks[li], s = d.faces[0], t = d.faces[2];
+    d.logFaces = [null, new Uint16Array([t, t, s, s, s, s]), new Uint16Array([s, s, s, s, t, t])];
+  }
+  // flower pot plant cross layers (cactus, dandelion, dead bush, poppy, spruce sapling)
+  blocks[125].plantLayers = [texId('cactus_side'), texId('dandelion'), texId('dead_bush'), texId('poppy'), texId('sapling_spruce')];
+
+  // ---- colour families (192..242) ------------------------------------------
+  for (let i = 0; i < 16; i++) {
+    const [ck, cn] = WOOL_COLORS[i];
+    def(192 + i, 'terracotta_' + ck, cn + ' Terracotta', { tex: 'terracotta_' + ck, h: 2, t: PICK, need: 1, resist: 30 });
+    def(208 + i, 'carpet_' + ck, cn + ' Carpet', { shape: SH.CARPET, tex: 'carpet_' + ck, h: 0.1, t: 'shears', snd: 'cloth', flam: 1 });
+    def(224 + i, 'glazed_terracotta_' + ck, cn + ' Glazed Terracotta', { tex: 'glazed_terracotta_' + ck, h: 2, t: PICK, need: 1, resist: 30 });
+  }
+  def(240, 'stained_glass_pane_orange', 'Orange Stained Glass Pane', { shape: SH.CUBE, tex: 'orange_stained_glass_pane', cutout: 1, cullSame: 1, h: 0.3, snd: 'glass' });
+  def(241, 'stained_glass_pane_yellow', 'Yellow Stained Glass Pane', { shape: SH.CUBE, tex: 'yellow_stained_glass_pane', cutout: 1, cullSame: 1, h: 0.3, snd: 'glass' });
+  def(242, 'stained_glass_pane_white', 'White Stained Glass Pane', { shape: SH.CUBE, tex: 'white_stained_glass_pane', cutout: 1, cullSame: 1, h: 0.3, snd: 'glass' });
+  def(243, 'lectern', 'Lectern', { shape: SH.FURN, tex: { top: 'lectern_top', front: 'lectern_front', side: 'lectern_sides', bottom: 'lectern_base' }, h: 2, t: AXE, snd: 'wood', flam: 1, flat: 'lectern_front' });
+  const jLog = def(244, 'jungle_log', 'Jungle Log', { tex: { top: 'jungle_log_top', side: 'jungle_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); jLog.log = 1;
+  const jWood = def(245, 'jungle_wood', 'Jungle Wood', { tex: 'jungle_wood', h: 2, t: AXE, snd: 'wood', flam: 1 }); jWood.log = 1;
+  def(246, 'jungle_planks', 'Jungle Planks', { tex: 'jungle_planks', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(247, 'jungle_leaves', 'Jungle Leaves', { tex: 'jungle_leaves', cutout: 1, opac: 1, h: 0.2, t: 'shears', snd: 'grass', tint: 4, color: 0x3f6b2a, flam: 1, ticks: 1 });
+  def(248, 'jungle_sapling', 'Jungle Sapling', plant('jungle_sapling'));
+  const jl = blocks[244]; jl.logFaces = [null, new Uint16Array([jl.faces[2], jl.faces[2], jl.faces[0], jl.faces[0], jl.faces[0], jl.faces[0]]), new Uint16Array([jl.faces[0], jl.faces[0], jl.faces[0], jl.faces[0], jl.faces[2], jl.faces[2]])];
+  const jw = blocks[245]; jw.logFaces = [null, new Uint16Array([jw.faces[2], jw.faces[2], jw.faces[0], jw.faces[0], jw.faces[0], jw.faces[0]]), new Uint16Array([jw.faces[0], jw.faces[0], jw.faces[0], jw.faces[0], jw.faces[2], jw.faces[2]])];
+
+  // flat 2D icons for thin blocks (3D icons would be nearly invisible)
+  const flatIcon = (id, name) => { const d = blocks[id]; if (d) d.flat = name; };
+  flatIcon(116, 'sea_pickle');
+  flatIcon(126, 'sign'); flatIcon(127, 'banner');
+  [128, 129, 130, 131].forEach((id, i) => flatIcon(id, ['cobblestone_wall', 'diorite_wall', 'granite_wall', 'sandstone_wall'][i]));
+  flatIcon(140, 'glass_pane'); flatIcon(141, 'iron_bars');
+  flatIcon(240, 'orange_stained_glass_pane'); flatIcon(241, 'yellow_stained_glass_pane'); flatIcon(242, 'white_stained_glass_pane');
+  [156, 157, 158, 159].forEach((id, i) => flatIcon(id, ['oak_fence_gate', 'spruce_fence_gate', 'acacia_fence_gate', 'jungle_fence_gate'][i]));
+  [160, 161, 162, 163].forEach((id, i) => flatIcon(id, ['oak_pressure_plate', 'spruce_pressure_plate', 'acacia_pressure_plate', 'jungle_pressure_plate'][i]));
+  [164, 165, 166, 167].forEach((id, i) => flatIcon(id, ['oak_trapdoor', 'spruce_trapdoor', 'acacia_trapdoor', 'jungle_trapdoor'][i]));
+  [168, 169, 170, 171, 172].forEach((id, i) => flatIcon(id, ['jungle_button', 'button_stone', 'oak_button', 'spruce_button', 'acacia_button'][i]));
+}
+export const TERRACOTTA_COLORS = new Array(16);
+export const CARPETS = new Array(16);
+export const GLAZED = new Array(16);
+for (let i = 0; i < 16; i++) { TERRACOTTA_COLORS[i] = 192 + i; CARPETS[i] = 208 + i; GLAZED[i] = 224 + i; }
+export const isWallBlock = (id) => id >= 128 && id <= 131;
+export const isFenceBlock = (id) => id === 76 || id === 155 || id === 185 || id === 189;
+export const isFenceLike = (id) => isFenceBlock(id) || isWallBlock(id);
+export const WOOL_RGB = WOOL_COLORS.map(([, , c]) => c);
+
 // misc non-block textures that live in the same array texture
 for (let i = 0; i < 10; i++) texId('crack_' + i);
 ['p_smoke', 'p_flame', 'p_bubble', 'p_splash', 'p_crit', 'p_heart', 'p_note', 'p_white', 'p_explode', 'p_lava'].forEach(texId);
 
-export const isLeaves = (id) => id === 16 || id === 55 || id === 58;
-export const isLog = (id) => id === 15 || id === 54 || id === 57;
-export const isSapling = (id) => id === 6 || id === 71 || id === 72;
+export const isLeaves = (id) => id === 16 || id === 55 || id === 58 || id === 176 || id === 247;
+export const isLog = (id) => id === 15 || id === 54 || id === 57 || id === 173 || id === 244;
+export const isSapling = (id) => id === 6 || id === 71 || id === 72 || id === 177 || id === 248;
 export const isFlower = (id) => id === 22 || id === 23 || (id >= 73 && id <= 75);
 export const isWool = (id) => id >= 96 && id < 112;
 
@@ -284,7 +432,7 @@ export function doorBoxIndex(meta) {
   return meta & 4 ? ((meta & 3) + 3) & 3 : meta & 3;
 }
 export function fenceConnects(id) {
-  return id === 76 || OPAQUE[id] === 1;
+  return id === 76 || isFenceBlock(id) || isWallBlock(id) || OPAQUE[id] === 1;
 }
 
 // sel=false: collision boxes, sel=true: selection (raycast) boxes.
@@ -326,6 +474,71 @@ export function getBoxes(id, meta, sel, nb) {
       return CHEST_BOX;
     case SH.BED:
       return BED_BOX;
+    case SH.CARPET:
+      return sel ? [[0, 0, 0, 1, 2 * p, 1]] : NONE;
+    case SH.WALL: {
+      const conn = nb && (isWallLike(nb(-1, 0)) || isWallLike(nb(1, 0)) || isWallLike(nb(0, -1)) || isWallLike(nb(0, 1)));
+      return sel ? FULL : conn ? FULL : [[0, 0, 0, 1, 0.5, 1]];
+    }
+    case SH.TRAPDOOR: {
+      const tf = meta & 3, open = meta & 4, top = meta & 8;
+      if (!open) return top ? [[0, 1 - p, 0, 1, 1, 1]] : [[0, 0, 0, 1, p, 1]];
+      const y0 = 0, y1 = 1;
+      if (tf === 0) return [[0, y0, 0, p, y1, 1]];
+      if (tf === 1) return [[1 - p, y0, 0, 1, y1, 1]];
+      if (tf === 2) return [[0, y0, 1 - p, 1, y1, 1]];
+      return [[0, y0, 0, p, y1, 1]];
+    }
+    case SH.GATE: {
+      const f = meta & 3, open = meta & 4;
+      if (!open) {
+        if (f === 0) return [[p, 0, 13 * p, 1 - p, 1, 1]];
+        if (f === 1) return [[0, 0, p, 3 * p, 1, 1 - p]];
+        if (f === 2) return [[p, 0, 0, 1 - p, 1, 3 * p]];
+        return [[13 * p, 0, p, 1, 1, 1 - p]];
+      }
+      if (f === 0) return [[13 * p, 0, p, 1, 1, 1 - p]];
+      if (f === 1) return [[p, 0, 0, 1 - p, 1, 3 * p]];
+      if (f === 2) return [[0, 0, p, 3 * p, 1, 1 - p]];
+      return [[p, 0, 13 * p, 1 - p, 1, 1]];
+    }
+    case SH.BUTTON:
+    case SH.SIGNW:
+    case SH.BANNERW: {
+      const f = meta & 3;
+      if (f === 0) return sel ? [[0, 0, 1 - 2 * p, 1, 1, 1]] : NONE;
+      if (f === 1) return sel ? [[1 - 2 * p, 0, 0, 1, 1, 1]] : NONE;
+      if (f === 2) return sel ? [[0, 0, 0, 1, 1, 2 * p]] : NONE;
+      return sel ? [[0, 0, 0, 2 * p, 1, 1]] : NONE;
+    }
+    case SH.FLOWER_POT:
+      return [[3 * p, 0, 3 * p, 13 * p, 10 * p, 13 * p]];
+    case SH.CAMPFIRE:
+      return sel ? [[0, 0, 0, 1, 4 * p, 1]] : NONE;
+    case SH.PICKLE:
+      return sel ? CROSS_SEL : NONE;
+    case SH.PRESSURE:
+      return sel ? [[0, 0, 0, 1, p, 1]] : NONE;
+    case SH.FURN: {
+      switch (id) {
+        case 118: return [[5 * p, 2 * p, 5 * p, 11 * p, 9 * p, 11 * p]];
+        case 119: return [[p, 0, p, 1 - p, 12 * p, 1 - p]];
+        case 142: return [[p, 0, p, 1 - p, 1, 1 - p]];
+        case 143: return [[3 * p, 0, 3 * p, 13 * p, 15 * p, 13 * p]];
+        case 144:
+        case 152: return FULL;
+        case 145: return [[3 * p, 0, 3 * p, 13 * p, 1, 13 * p]];
+        case 146:
+        case 148: return [[p, 0, p, 1 - p, 10 * p, 1 - p]];
+        case 147:
+        case 149:
+        case 151:
+        case 153: return [[p, 0, p, 1 - p, 12 * p, 1 - p]];
+        case 150:
+        case 243: return [[p, 0, p, 1 - p, 12 * p, 1 - p]];
+        default: return [[p, 0, p, 1 - p, 12 * p, 1 - p]];
+      }
+    }
   }
   return FULL;
 }

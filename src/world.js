@@ -855,18 +855,34 @@ export class World {
         }
         break;
       }
-      case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES:
+      case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES:
         if ((meta & 2) && !(meta & 1)) {
           if (this._leafConnected(x, y, z)) this.setMeta(x, y, z, meta & ~2, false);
           else this.breakNaturally(x, y, z);
         }
         break;
-      case B.SAPLING: case B.BIRCH_SAPLING: case B.SPRUCE_SAPLING:
+      case B.SAPLING: case B.BIRCH_SAPLING: case B.SPRUCE_SAPLING: case B.ACACIA_SAPLING: case B.JUNGLE_SAPLING:
         if (this.getLight(x, y + 1, z) >= 9 && Math.random() < 0.15) {
           if (!(meta & 8)) this.setMeta(x, y, z, meta | 8, false);
           else this.growTree(x, y, z);
         }
         break;
+      case B.MELON_STEM: case B.PUMPKIN_STEM: {
+        if ((meta & 7) < 7 && this.getLight(x, y + 1, z) >= 9 && Math.random() < 0.3) this.setMeta(x, y, z, (meta & 7) + 1);
+        else if ((meta & 7) === 7 && Math.random() < 0.05) {
+          const fruit = id === B.MELON_STEM ? B.MELON : B.PUMPKIN;
+          const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].sort(() => Math.random() - 0.5);
+          for (const [dx, dz] of dirs) {
+            const nx = x + dx, nz = z + dz;
+            if (this.getBlock(nx, y, nz) === 0 && SOLID[this.getBlock(nx, y - 1, nz)]) {
+              this.setBlock(nx, y, nz, fruit, 0);
+              this.setMeta(x, y, z, 0, false);
+              break;
+            }
+          }
+        }
+        break;
+      }
       case B.WHEAT:
         if ((meta & 7) < 7 && this.getLight(x, y + 1, z) >= 9) {
           const wet = this.getMeta(x, y - 1, z) > 0;
@@ -929,7 +945,7 @@ export class World {
   }
   growTree(x, y, z) {
     const id = this.getBlock(x, y, z);
-    const type = id === B.BIRCH_SAPLING ? 1 : id === B.SPRUCE_SAPLING ? 2 : 0;
+    const type = id === B.BIRCH_SAPLING ? 1 : id === B.SPRUCE_SAPLING ? 2 : id === B.ACACIA_SAPLING ? 3 : id === B.JUNGLE_SAPLING ? 4 : 0;
     const shape = treeShape(type, Math.random);
     for (const [dx, dy, dz, k] of shape) {
       if (k !== 0 || dy === 0) continue;

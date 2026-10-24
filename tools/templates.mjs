@@ -101,9 +101,9 @@ const SIMPLE = {
   cut_sandstone: ['cut_sandstone', 0], chiseled_sandstone: ['chiseled_sandstone', 0], smooth_sandstone: ['smooth_sandstone', 0],
   cobblestone_wall: ['cobblestone_wall', 0], diorite_wall: ['diorite_wall', 0],
   granite_wall: ['granite_wall', 0], sandstone_wall: ['sandstone_wall', 0],
-  glass_pane: ['glass_pane', paneMeta(0)], orange_stained_glass_pane: ['glass_pane', paneMeta(1)],
-  yellow_stained_glass_pane: ['glass_pane', paneMeta(4)], white_stained_glass_pane: ['glass_pane', paneMeta(0)],
-  iron_bars: ['iron_bars', paneMeta(15)],
+  glass_pane: ['glass_pane', 0], orange_stained_glass_pane: ['stained_glass_pane_orange', 0],
+  yellow_stained_glass_pane: ['stained_glass_pane_yellow', 0], white_stained_glass_pane: ['stained_glass_pane_white', 0],
+  iron_bars: ['iron_bars', 0],
   terracotta: ['terracotta', 0],
   wheat: ['wheat', (p) => (p.stage ?? 0) & 7],
   melon_stem: ['melon_stem', (p) => (p.stage ?? 0) & 7], pumpkin_stem: ['pumpkin_stem', (p) => (p.stage ?? 0) & 7],
@@ -130,10 +130,10 @@ const SIMPLE = {
   potted_spruce_sapling: ['flower_pot', 4],
 };
 for (const [c, i] of Object.entries(WOOL)) {
-  SIMPLE[c + '_terracotta'] = ['terracotta', 16 + i];
-  SIMPLE[c + '_glazed_terracotta'] = ['glazed_terracotta', i];
+  SIMPLE[c + '_terracotta'] = ['terracotta_' + c, 0];
+  SIMPLE[c + '_glazed_terracotta'] = ['glazed_terracotta_' + c, 0];
   SIMPLE[c + '_wool'] = ['wool' + i, 0];
-  SIMPLE[c + '_carpet'] = ['carpet', i];
+  SIMPLE[c + '_carpet'] = ['carpet_' + c, 0];
   SIMPLE[c + '_bed'] = ['bed', (p) => (i << 3) | face(p) | (p.parts === 'head' ? 4 : 0)];
 }
 // existing fablecraft keys win; new woods get fresh keys

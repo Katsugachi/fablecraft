@@ -47,6 +47,11 @@ it('book', 'Book');
 it('wheat_seeds', 'Wheat Seeds', { place: B.WHEAT });
 it('wheat', 'Wheat');
 it('bowl', 'Bowl');
+it('melon_slice', 'Melon Slice', { food: { hunger: 2, sat: 0.6 } });
+it('melon_seeds', 'Melon Seeds', { place: B.MELON_STEM });
+it('pumpkin_seeds', 'Pumpkin Seeds', { place: B.PUMPKIN_STEM });
+// dyes (colour order matches WOOL_COLORS)
+for (const [ck, cn] of WOOL_COLORS) it(ck + '_dye', cn + ' Dye');
 
 // ---- tools --------------------------------------------------------------------
 export const TIERS = {
@@ -114,6 +119,16 @@ const FUEL = {
   [B.OAK_STAIRS]: 300, [B.BIRCH_STAIRS]: 300, [B.SPRUCE_STAIRS]: 300, [B.DOOR]: 200, [B.LADDER]: 300,
 };
 for (let i = 0; i < 16; i++) FUEL[B.WOOL + i] = 100;
+FUEL[B.ACACIA_PLANKS] = 300; FUEL[B.ACACIA_LOG] = 300; FUEL[B.ACACIA_SAPLING] = 100; FUEL[B.ACACIA_FENCE] = 300;
+FUEL[B.JUNGLE_PLANKS] = 300; FUEL[B.JUNGLE_LOG] = 300; FUEL[B.JUNGLE_SAPLING] = 100; FUEL[B.JUNGLE_FENCE] = 300;
+FUEL[B.ACACIA_TRAPDOOR] = 200; FUEL[B.TRAPDOOR_OAK] = 200; FUEL[B.TRAPDOOR_SPRUCE] = 200; FUEL[B.TRAPDOOR_JUNGLE] = 200;
+FUEL[B.DOOR_SPRUCE] = 200; FUEL[B.DOOR_ACACIA] = 200; FUEL[B.DOOR_JUNGLE] = 200;
+FUEL[B.FENCE_GATE_OAK] = 300; FUEL[B.FENCE_GATE_SPRUCE] = 300; FUEL[B.FENCE_GATE_ACACIA] = 300; FUEL[B.FENCE_GATE_JUNGLE] = 300;
+FUEL[B.SLAB_ACACIA] = 150; FUEL[B.SLAB_JUNGLE] = 150; FUEL[B.STAIRS_ACACIA] = 300; FUEL[B.STAIRS_JUNGLE] = 300;
+FUEL[B.SIGN] = 300; FUEL[B.BANNER] = 100; FUEL[B.HAY_BLOCK] = 100; FUEL[B.LECTERN] = 300;
+FUEL[B.ACACIA_WOOD] = 300; FUEL[B.SPRUCE_WOOD] = 300; FUEL[B.STRIPPED_OAK_LOG] = 300; FUEL[B.STRIPPED_OAK_WOOD] = 300;
+FUEL[B.STRIPPED_SPRUCE_LOG] = 300; FUEL[B.STRIPPED_SPRUCE_WOOD] = 300; FUEL[B.STRIPPED_ACACIA_LOG] = 300;
+FUEL[B.JUNGLE_WOOD] = 300;
 export const fuelTime = (id) => (id < 256 ? FUEL[id] || 0 : items[id]?.fuel || 0);
 
 // ---- smelting -------------------------------------------------------------------
@@ -122,14 +137,17 @@ export const SMELT = new Map([
   [B.LOG, I.CHARCOAL], [B.BIRCH_LOG, I.CHARCOAL], [B.SPRUCE_LOG, I.CHARCOAL], [I.CLAY_BALL, I.BRICK],
   [I.PORKCHOP, I.COOKED_PORKCHOP], [I.BEEF, I.STEAK], [I.CHICKEN, I.COOKED_CHICKEN], [I.MUTTON, I.COOKED_MUTTON],
   [B.COAL_ORE, I.COAL], [B.DIAMOND_ORE, I.DIAMOND], [B.REDSTONE_ORE, I.REDSTONE], [B.LAPIS_ORE, I.LAPIS],
+  [B.CLAY, B.TERRACOTTA],
 ]);
+for (let i = 0; i < 16; i++) SMELT.set(192 + i, 224 + i); // coloured terracotta -> coloured glazed terracotta
 
 // ---- crafting -------------------------------------------------------------------
 const G = {
-  planks: [B.PLANKS, B.BIRCH_PLANKS, B.SPRUCE_PLANKS],
-  logs: [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG],
+  planks: [B.PLANKS, B.BIRCH_PLANKS, B.SPRUCE_PLANKS, B.ACACIA_PLANKS, B.JUNGLE_PLANKS],
+  logs: [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.ACACIA_LOG, B.JUNGLE_LOG],
   wool: Array.from({ length: 16 }, (_, i) => B.WOOL + i),
   coal: [I.COAL, I.CHARCOAL],
+  stone: [B.STONE, B.COBBLESTONE, B.GRANITE, B.DIORITE, B.ANDESITE, B.STONE_BRICKS],
 };
 export const recipes = [];
 const norm = (x) => (typeof x === 'string' ? G[x.slice(1)] : x);
@@ -224,6 +242,134 @@ blockOf(B.COAL_BLOCK, I.COAL);
 blockOf(B.LAPIS_BLOCK, I.LAPIS);
 blockOf(B.REDSTONE_BLOCK, I.REDSTONE);
 
+// ---- modern (village-age) recipes -------------------------------------------
+shaped(B.ACACIA_PLANKS, 4, ['L'], { L: B.ACACIA_LOG });
+shaped(B.JUNGLE_PLANKS, 4, ['L'], { L: B.JUNGLE_LOG });
+shaped(B.ACACIA_PLANKS, 4, ['L'], { L: B.ACACIA_WOOD });
+shaped(B.JUNGLE_PLANKS, 4, ['L'], { L: B.JUNGLE_WOOD });
+shaped(B.SPRUCE_PLANKS, 4, ['L'], { L: B.SPRUCE_WOOD });
+shaped(B.PLANKS, 4, ['L'], { L: B.STRIPPED_OAK_LOG });
+shaped(B.SPRUCE_PLANKS, 4, ['L'], { L: B.STRIPPED_SPRUCE_LOG });
+shaped(B.ACACIA_PLANKS, 4, ['L'], { L: B.STRIPPED_ACACIA_LOG });
+// wood (4 logs -> 4 wood), stripped wood (4 stripped logs -> 4)
+const woodOf = (out, m) => shaped(out, 4, ['LL', 'LL'], { L: m });
+const logOf = (out, m) => shapeless(out, 1, [m]); // strip with crafting (axe-stripping approximation)
+woodOf(B.ACACIA_WOOD, B.ACACIA_LOG);
+woodOf(B.SPRUCE_WOOD, B.SPRUCE_LOG);
+woodOf(B.STRIPPED_OAK_WOOD, B.STRIPPED_OAK_LOG);
+woodOf(B.STRIPPED_SPRUCE_WOOD, B.STRIPPED_SPRUCE_LOG);
+woodOf(B.STRIPPED_ACACIA_WOOD, B.STRIPPED_ACACIA_LOG);
+woodOf(B.JUNGLE_WOOD, B.JUNGLE_LOG);
+logOf(B.STRIPPED_OAK_LOG, B.LOG);
+logOf(B.STRIPPED_SPRUCE_LOG, B.SPRUCE_LOG);
+logOf(B.STRIPPED_ACACIA_LOG, B.ACACIA_LOG);
+// doors
+shaped(B.DOOR_SPRUCE, 3, ['PP', 'PP', 'PP'], { P: B.SPRUCE_PLANKS });
+shaped(B.DOOR_ACACIA, 3, ['PP', 'PP', 'PP'], { P: B.ACACIA_PLANKS });
+shaped(B.DOOR_JUNGLE, 3, ['PP', 'PP', 'PP'], { P: B.JUNGLE_PLANKS });
+// fences / gates / trapdoors / plates / buttons (per wood)
+const fenceOf = (out, m) => shaped(out, 3, ['PSP', 'PSP'], { P: m, S: I.STICK });
+const gateOf = (out, m) => shaped(out, 1, ['S S', 'PPP', 'PSP'], { P: m, S: I.STICK });
+const trapdoorOf = (out, m) => shaped(out, 4, ['PP', 'PP'], { P: m });
+const plateOf = (out, m) => shaped(out, 2, ['PP'], { P: m });
+const buttonOf = (out, m) => shaped(out, 1, ['P'], { P: m });
+fenceOf(B.SPRUCE_FENCE, B.SPRUCE_PLANKS);
+fenceOf(B.ACACIA_FENCE, B.ACACIA_PLANKS);
+fenceOf(B.JUNGLE_FENCE, B.JUNGLE_PLANKS);
+gateOf(B.FENCE_GATE_OAK, B.PLANKS);
+gateOf(B.FENCE_GATE_SPRUCE, B.SPRUCE_PLANKS);
+gateOf(B.FENCE_GATE_ACACIA, B.ACACIA_PLANKS);
+gateOf(B.FENCE_GATE_JUNGLE, B.JUNGLE_PLANKS);
+trapdoorOf(B.TRAPDOOR_OAK, B.PLANKS);
+trapdoorOf(B.TRAPDOOR_SPRUCE, B.SPRUCE_PLANKS);
+trapdoorOf(B.TRAPDOOR_ACACIA, B.ACACIA_PLANKS);
+trapdoorOf(B.TRAPDOOR_JUNGLE, B.JUNGLE_PLANKS);
+plateOf(B.PRESSURE_PLATE_OAK, B.PLANKS);
+plateOf(B.PRESSURE_PLATE_SPRUCE, B.SPRUCE_PLANKS);
+plateOf(B.PRESSURE_PLATE_ACACIA, B.ACACIA_PLANKS);
+plateOf(B.PRESSURE_PLATE_JUNGLE, B.JUNGLE_PLANKS);
+buttonOf(B.BUTTON_OAK, B.PLANKS);
+buttonOf(B.BUTTON_SPRUCE, B.SPRUCE_PLANKS);
+buttonOf(B.BUTTON_ACACIA, B.ACACIA_PLANKS);
+buttonOf(B.BUTTON_JUNGLE, B.JUNGLE_PLANKS);
+buttonOf(B.STONE_BUTTON, B.STONE);
+// slabs & stairs
+shaped(B.SLAB_ACACIA, 6, ['SSS'], { S: B.ACACIA_PLANKS });
+shaped(B.SLAB_JUNGLE, 6, ['SSS'], { S: B.JUNGLE_PLANKS });
+shaped(B.DIORITE_SLAB, 6, ['SSS'], { S: B.DIORITE });
+shaped(B.GRANITE_SLAB, 6, ['SSS'], { S: B.GRANITE });
+shaped(B.SMOOTH_SANDSTONE_SLAB, 6, ['SSS'], { S: B.SMOOTH_SANDSTONE });
+stairsOf(B.STAIRS_ACACIA, B.ACACIA_PLANKS);
+stairsOf(B.STAIRS_JUNGLE, B.JUNGLE_PLANKS);
+stairsOf(B.DIORITE_STAIRS, B.DIORITE);
+stairsOf(B.GRANITE_STAIRS, B.GRANITE);
+stairsOf(B.SMOOTH_SANDSTONE_STAIRS, B.SMOOTH_SANDSTONE);
+// sandstone family
+shaped(B.SMOOTH_SANDSTONE, 2, ['S'], { S: B.SANDSTONE });
+shaped(B.CUT_SANDSTONE, 4, ['SS', 'SS'], { S: B.SANDSTONE });
+shaped(B.CHISELED_SANDSTONE, 2, ['C', 'C'], { C: B.CUT_SANDSTONE });
+// walls
+const wallOf = (out, m) => shaped(out, 6, ['SS', 'SS'], { S: m });
+wallOf(B.COBBLESTONE_WALL, B.COBBLESTONE);
+wallOf(B.DIORITE_WALL, B.DIORITE);
+wallOf(B.GRANITE_WALL, B.GRANITE);
+wallOf(B.SANDSTONE_WALL, B.SANDSTONE);
+// glass / bars
+shaped(B.GLASS_PANE, 16, ['G', 'G', 'G'], { G: B.GLASS });
+shapeless(B.STAINED_GLASS_PANE_ORANGE, 1, [B.GLASS_PANE, I.ORANGE_DYE]);
+shapeless(B.STAINED_GLASS_PANE_YELLOW, 1, [B.GLASS_PANE, I.YELLOW_DYE]);
+shapeless(B.STAINED_GLASS_PANE_WHITE, 1, [B.GLASS_PANE, I.WHITE_DYE]);
+shaped(B.IRON_BARS, 1, ['II', 'II', 'II'], { I: I.IRON_INGOT });
+// ice
+shaped(B.PACKED_ICE, 1, ['II', 'II'], { I: B.ICE });
+shaped(B.BLUE_ICE, 1, ['PP', 'PP'], { P: B.PACKED_ICE });
+// terracotta colours & carpets & dyed panes
+for (let i = 0; i < 16; i++) {
+  const [ck] = WOOL_COLORS[i];
+  shapeless(192 + i, 1, [B.TERRACOTTA, I[(ck + '_dye').toUpperCase()]]);
+  shaped(208 + i, 2, ['W', 'W'], { W: B.WOOL + i });
+}
+// farm
+shaped(B.HAY_BLOCK, 1, ['WWW', 'WWW', 'WWW'], { W: I.WHEAT });
+shaped(B.FLOWER_POT, 1, ['B B', 'BBB'], { B: I.BRICK });
+// signs & banners
+shaped(B.SIGN, 1, ['PPP', 'PPP', ' S'], { P: B.SPRUCE_PLANKS, S: I.STICK });
+shaped(B.BANNER, 1, ['PPP', 'PPP', 'SS'], { P: B.SPRUCE_PLANKS, S: I.STICK });
+// dyes
+shapeless(I.WHITE_DYE, 2, [I.BONE_MEAL]);
+shapeless(I.ORANGE_DYE, 1, [B.PUMPKIN]);
+shapeless(I.MAGENTA_DYE, 1, [B.ALLIUM, I.WHITE_DYE]);
+shapeless(I.LIGHT_BLUE_DYE, 1, [B.CORNFLOWER, I.WHITE_DYE]);
+shapeless(I.YELLOW_DYE, 1, [B.DANDELION]);
+shapeless(I.LIME_DYE, 1, [B.TALL_GRASS]);
+shapeless(I.PINK_DYE, 1, [B.POPPY, I.WHITE_DYE]);
+shapeless(I.GRAY_DYE, 1, [I.BONE_MEAL, I.BLACK_DYE]);
+shapeless(I.LIGHT_GRAY_DYE, 1, [I.GRAY_DYE, I.WHITE_DYE]);
+shapeless(I.CYAN_DYE, 1, [I.LIGHT_BLUE_DYE, I.GREEN_DYE]);
+shapeless(I.PURPLE_DYE, 1, [I.MAGENTA_DYE, I.BLUE_DYE]);
+shapeless(I.BLUE_DYE, 1, [I.LAPIS]);
+shapeless(I.BROWN_DYE, 1, [I.COAL]);
+shapeless(I.GREEN_DYE, 1, [B.CACTUS]);
+shapeless(I.RED_DYE, 1, [B.POPPY]);
+shapeless(I.BLACK_DYE, 1, [B.OBSIDIAN]);
+// light sources & village furniture
+shaped(B.LANTERN, 4, ['II', 'IT', 'I '], { I: I.IRON_INGOT, T: B.TORCH });
+shaped(B.CAULDRON, 1, ['I I', 'I I', 'III'], { I: I.IRON_INGOT });
+shaped(B.CAMPFIRE, 1, ['LCL', 'LFL'], { L: '#logs', C: '#coal', F: I.FLINT });
+shaped(B.BELL, 1, ['GGG', 'IGI', 'III'], { G: I.GOLD_INGOT, I: I.IRON_INGOT });
+shaped(B.BARREL, 1, ['PIP', 'PPP', 'PIP'], { P: B.PLANKS, I: I.IRON_INGOT });
+shaped(B.BLAST_FURNACE, 1, ['III', 'CFC', 'ICI'], { I: I.IRON_INGOT, C: B.COBBLESTONE, F: B.FURNACE });
+shaped(B.BREWING_STAND, 1, ['C C', 'CCC', 'S S'], { C: B.COBBLESTONE, S: I.STICK });
+shaped(B.CARTOGRAPHY_TABLE, 1, ['PP', 'ATA'], { P: B.PLANKS, A: I.PAPER, T: B.CRAFTING_TABLE });
+shaped(B.COMPOSTER, 1, ['PPP', 'P P', 'PPP'], { P: B.PLANKS });
+shaped(B.FLETCHING_TABLE, 1, ['PP', 'SS', ' B'], { P: B.PLANKS, S: I.STICK, B: I.BOW });
+shaped(B.GRINDSTONE, 1, ['SS', 'PP', ' X'], { S: I.STICK, P: B.PLANKS, X: B.STONE });
+shaped(B.LOOM, 1, ['PP', 'WAW'], { P: B.PLANKS, W: I.STRING, A: B.CRAFTING_TABLE });
+shaped(B.SMITHING_TABLE, 1, ['II', 'SS', 'TC'], { I: I.IRON_INGOT, S: B.STONE, T: B.CRAFTING_TABLE, C: B.STONECUTTER });
+shaped(B.SMOKER, 1, ['LLL', 'LFL'], { L: '#logs', F: B.FURNACE });
+shaped(B.STONECUTTER, 1, ['SIS', 'BBS'], { S: B.STONE, I: I.IRON_INGOT, B: B.STONE_BRICKS });
+shaped(B.LECTERN, 1, ['BBB', 'BBB', ' B'], { B: B.BOOKSHELF });
+
 const ingMatch = (ing, id) => (Array.isArray(ing) ? ing.includes(id) : ing === id);
 
 // grid: array of item ids (0 = empty), size gw*gw. Returns {id,count} or null.
@@ -299,15 +445,25 @@ export function getDrops(id, meta, tool, rand = Math.random) {
     case B.DIAMOND_ORE: return one(I.DIAMOND);
     case B.REDSTONE_ORE: return one(I.REDSTONE, ri(rand, 4, 5));
     case B.LAPIS_ORE: return one(I.LAPIS, ri(rand, 4, 8));
-    case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: {
+    case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES: {
       if (shears) return one(id);
       const out = [];
-      if (rand() < 0.06) out.push({ id: id === B.LEAVES ? B.SAPLING : id === B.BIRCH_LEAVES ? B.BIRCH_SAPLING : B.SPRUCE_SAPLING, count: 1 });
+      const sap = id === B.LEAVES ? B.SAPLING : id === B.BIRCH_LEAVES ? B.BIRCH_SAPLING : id === B.SPRUCE_LEAVES ? B.SPRUCE_SAPLING : id === B.ACACIA_LEAVES ? B.ACACIA_SAPLING : B.JUNGLE_SAPLING;
+      if (rand() < 0.06) out.push({ id: sap, count: 1 });
       if (id === B.LEAVES && rand() < 0.01) out.push({ id: I.APPLE, count: 1 });
       if (rand() < 0.03) out.push({ id: I.STICK, count: 1 });
       return out;
     }
     case B.GLASS: case B.ICE: case B.FIRE: case B.BEDROCK: case B.WATER: case B.LAVA: return [];
+    case B.MELON: {
+      const out = [];
+      for (let i = 0; i < ri(rand, 3, 8); i++) out.push({ id: I.MELON_SLICE, count: 1 });
+      for (let i = 0; i < ri(rand, 1, 3); i++) out.push({ id: I.MELON_SEEDS, count: 1 });
+      return out;
+    }
+    case B.PUMPKIN: return rand() < 0.43 ? one(I.PUMPKIN_SEEDS) : one(id);
+    case B.DIRT_PATH: return one(B.DIRT);
+    case B.CAMPFIRE: return rand() < 0.5 ? one(I.STICK, ri(rand, 1, 2)) : [];
     case B.TALL_GRASS: return shears ? one(id) : rand() < 0.15 ? one(I.WHEAT_SEEDS) : [];
     case B.DEAD_BUSH: return shears ? one(id) : rand() < 0.7 ? one(I.STICK, ri(rand, 1, 2)) : [];
     case B.GRAVEL: return rand() < 0.1 ? one(I.FLINT) : one(id);
@@ -355,6 +511,26 @@ export const CREATIVE = (() => {
   add(B.CRAFTING_TABLE, B.FURNACE, B.CHEST, B.TORCH, B.LADDER, B.DOOR, B.FENCE, B.BED, B.TNT);
   add(B.SAPLING, B.BIRCH_SAPLING, B.SPRUCE_SAPLING, B.TALL_GRASS, B.DEAD_BUSH, B.DANDELION, B.POPPY, B.CORNFLOWER, B.ALLIUM, B.DAISY);
   add(B.BROWN_MUSHROOM, B.RED_MUSHROOM, B.SUGAR_CANE);
+  // modern (village-age) blocks
+  add(B.LOG, B.ACACIA_LOG, B.JUNGLE_LOG, B.PLANKS, B.ACACIA_PLANKS, B.JUNGLE_PLANKS);
+  add(B.ACACIA_WOOD, B.SPRUCE_WOOD, B.JUNGLE_WOOD, B.STRIPPED_OAK_LOG, B.STRIPPED_OAK_WOOD, B.STRIPPED_SPRUCE_LOG, B.STRIPPED_SPRUCE_WOOD, B.STRIPPED_ACACIA_LOG);
+  add(B.ACACIA_LEAVES, B.JUNGLE_LEAVES, B.ACACIA_SAPLING, B.JUNGLE_SAPLING);
+  add(B.TERRACOTTA, B.SMOOTH_SANDSTONE, B.CUT_SANDSTONE, B.CHISELED_SANDSTONE);
+  add(B.SMOOTH_SANDSTONE_SLAB, B.SMOOTH_SANDSTONE_STAIRS, B.DIORITE_SLAB, B.GRANITE_SLAB, B.DIORITE_STAIRS, B.GRANITE_STAIRS);
+  add(B.COBBLESTONE_WALL, B.DIORITE_WALL, B.GRANITE_WALL, B.SANDSTONE_WALL, B.GLASS_PANE, B.IRON_BARS);
+  add(B.PACKED_ICE, B.BLUE_ICE, B.SEA_PICKLE, B.MELON, B.MELON_STEM, B.PUMPKIN_STEM, B.DIRT_PATH, B.HAY_BLOCK, B.FLOWER_POT);
+  add(B.SIGN, B.BANNER, B.CAMPFIRE, B.LANTERN, B.CAULDRON, B.LECTERN);
+  add(B.BARREL, B.BELL, B.BLAST_FURNACE, B.BREWING_STAND, B.CARTOGRAPHY_TABLE, B.COMPOSTER, B.FLETCHING_TABLE, B.GRINDSTONE, B.LOOM, B.SMITHING_TABLE, B.SMOKER, B.STONECUTTER);
+  add(B.DOOR_SPRUCE, B.DOOR_ACACIA, B.DOOR_JUNGLE, B.SPRUCE_FENCE, B.ACACIA_FENCE, B.JUNGLE_FENCE);
+  add(B.FENCE_GATE_OAK, B.FENCE_GATE_SPRUCE, B.FENCE_GATE_ACACIA, B.FENCE_GATE_JUNGLE);
+  add(B.PRESSURE_PLATE_OAK, B.PRESSURE_PLATE_SPRUCE, B.PRESSURE_PLATE_ACACIA, B.PRESSURE_PLATE_JUNGLE);
+  add(B.TRAPDOOR_OAK, B.TRAPDOOR_SPRUCE, B.TRAPDOOR_ACACIA, B.TRAPDOOR_JUNGLE);
+  add(B.BUTTON_OAK, B.BUTTON_SPRUCE, B.BUTTON_ACACIA, B.BUTTON_JUNGLE, B.STONE_BUTTON);
+  add(B.SLAB_ACACIA, B.SLAB_JUNGLE, B.STAIRS_ACACIA, B.STAIRS_JUNGLE);
+  add(B.STAINED_GLASS_PANE_ORANGE, B.STAINED_GLASS_PANE_YELLOW, B.STAINED_GLASS_PANE_WHITE);
+  for (let i = 0; i < 16; i++) add(192 + i); // terracotta colours
+  for (let i = 0; i < 16; i++) add(208 + i); // carpets
+  for (let i = 0; i < 16; i++) add(224 + i); // glazed terracotta
   for (let i = 256; i < nextId; i++) add(i);
   return out;
 })();
