@@ -3,12 +3,13 @@
 import { Perlin, hash2, hash3, rand2, mulberry32 } from './noise.js';
 import { B, CH, WH, SEA, OPAQUE } from './blocks.js';
 import { clamp, lerp, smoothstep } from './math.js';
+import { stampVillages } from './structures.js';
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, BIRCH_FOREST: 4, TAIGA: 5, SNOWY_TUNDRA: 6,
-  SNOWY_TAIGA: 7, DESERT: 8, SAVANNA: 9, SWAMP: 10, MOUNTAINS: 11, RIVER: 12,
+  SNOWY_TAIGA: 7, DESERT: 8, SAVANNA: 9, SWAMP: 10, MOUNTAINS: 11, RIVER: 12, MEADOW: 13,
 };
-export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Snowy Taiga', 'Desert', 'Savanna', 'Swamp', 'Mountains', 'River'];
+export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Snowy Taiga', 'Desert', 'Savanna', 'Swamp', 'Mountains', 'River', 'Meadow'];
 
 const mixc = (a, b, t) => {
   const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
@@ -88,7 +89,7 @@ export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.ACACIA_
 
 const PAD = 5;
 const PW = CH + PAD * 2;
-const TREE_DENSITY = [0, 0, 0.004, 0.075, 0.07, 0.07, 0.003, 0.055, 0, 0.006, 0.04, 0.012, 0];
+const TREE_DENSITY = [0, 0, 0.004, 0.075, 0.07, 0.07, 0.003, 0.055, 0, 0.006, 0.04, 0.012, 0, 0];
 
 export class WorldGen {
   constructor(seed) {
@@ -149,7 +150,7 @@ export class WorldGen {
     else if (t < 0.22) biome = hu > 0.5 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_TUNDRA;
     else if (t < 0.38) biome = hu > 0.38 ? BIOME.TAIGA : BIOME.PLAINS;
     else if (t > 0.68) biome = hu < 0.44 ? BIOME.DESERT : hu < 0.62 ? BIOME.SAVANNA : BIOME.FOREST;
-    else if (hu < 0.36) biome = BIOME.PLAINS;
+    else if (hu < 0.36) biome = (this.misc.noise2(x / 150 + 31, z / 150 - 7) > 0.18 && hu > 0.2) ? BIOME.MEADOW : BIOME.PLAINS;
     else if (hu < 0.58) biome = BIOME.FOREST;
     else if (hu < 0.68) biome = BIOME.BIRCH_FOREST;
     else biome = h < 67 ? BIOME.SWAMP : BIOME.FOREST;
@@ -322,6 +323,7 @@ export class WorldGen {
           let grass = 0, flowers = 0.004, shroom = 0;
           switch (biome) {
             case BIOME.PLAINS: grass = 0.3; flowers = this.misc.noise2(wx / 40, wz / 40) > 0.3 ? 0.14 : 0.006; break;
+            case BIOME.MEADOW: grass = 0.45; flowers = this.misc.noise2(wx / 40 + 5, wz / 40) > 0 ? 0.2 : 0.08; break;
             case BIOME.FOREST: case BIOME.BIRCH_FOREST: grass = 0.1; flowers = 0.012; shroom = 0.003; break;
             case BIOME.TAIGA: grass = 0.14; shroom = 0.006; break;
             case BIOME.SAVANNA: grass = 0.42; break;
@@ -355,6 +357,13 @@ export class WorldGen {
         }
       }
     }
-    return { blocks, meta };
+    // ---- structures (vanilla 1.21.5 village jigsaw generation) --------------
+    let ents = [];
+    try {
+      ents = stampVillages(cx, cz, seed, this, blocks, meta);
+    } catch (e) {
+      ents = [];
+    }
+    return { blocks, meta, ents };
   }
 }

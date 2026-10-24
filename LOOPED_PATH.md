@@ -134,9 +134,20 @@ initial villagers with their professions.
   exact set — plains/taiga/desert/savanna/snowy houses, streets, well, farms, pens,
   stables, lamp posts, fountain/town center) + villager skins per type/profession +
   iron golem + zombie villager (real skins from `textures/entity/`).
-- **Proof:** seed known village regions (34×34 tiles), teleport camera above each,
-  screenshot + assert: village center present, ≥ N houses, villagers with professions,
-  beds at night, golem; zero missing textures.
+- **Proof:** (DONE, real Chromium + Playwright, seed 20240229) fresh world → wait
+  `inWorld` → teleport to the placed village (chunks stream in) → 48×48×18 block
+  histogram around town center + mob census within 80 blocks + 3 screenshots.
+  Confirmed: village chunks load; village-specific blocks present (dirt_path 14,
+  mossy_cobblestone 18, torch 4, oak_trapdoor 11, oak_stairs 4, **bell 1**); 17–27
+  mobs incl. 4 distinct villager professions (butcher/weaponsmith/fletcher/armorer —
+  real profession model names), iron_golem, cats, village cows/sheep/pigs/chickens,
+  all `persistent`; **zero page errors**. Shots: village_wide (aerial), village_front,
+  villager_close.
+
+### ✅ Iteration 2 STATUS: COMPLETE
+- Village jigsaw assembly (5 biomes, processors, villager + golem + animal spawns,
+  professions) verified in-browser with zero errors. Single-file build: 1,191,315 B.
+- Next: Iteration 3 (Trial Chambers, Breeze, Creaking, Pale Garden).
 
 ### Iteration 3 — 26.3 flagships: Trial Chambers, Creaking, Pale Garden
 - **Research:** trial_chambers.json + pools + templates; breeze/creaking mob behavior

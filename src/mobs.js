@@ -224,13 +224,21 @@ export const MOBS = {
   skeleton: { w: 0.6, h: 1.99, hp: 20, speed: 0.25, hostile: true, dmg: 2, drops: [[I.BONE, 0, 2], [I.ARROW, 0, 2]], burns: true, xp: 5 },
   creeper: { w: 0.6, h: 1.7, hp: 20, speed: 0.25, hostile: true, drops: [[I.GUNPOWDER, 0, 2]], xp: 5 },
   spider: { w: 1.4, h: 0.9, hp: 16, speed: 0.3, hostile: true, dmg: 2, drops: [[I.STRING, 0, 2]], xp: 5, climbs: true },
+  villager: { w: 0.6, h: 1.95, hp: 20, speed: 0.2, xp: 12, panic: 1.4 },
+  iron_golem: { w: 1.4, h: 2.7, hp: 50, speed: 0.24, dmg: 6, xp: 16, panic: 1.1, drops: [[I.IRON_INGOT, 3, 5]], neutral: true },
+  cat: { w: 0.6, h: 0.7, hp: 10, speed: 0.3, panic: 1.5 },
 };
 
 export class Mob extends Living {
-  constructor(world, type, x, y, z) {
+  constructor(world, type, x, y, z, opts = null) {
     super(world, x, y, z);
     this.kind = 'mob';
     this.type = type;
+    this.modelName = (opts && opts.modelName) || type;
+    this.scale = (opts && opts.scale) || 1;
+    this.persistent = !!(opts && opts.persistent);
+    this.extra = (opts && opts.extra) || 0;
+    this._target = null;
     const d = (this.def = MOBS[type]);
     this.w = d.w; this.h = d.h;
     this.health = this.maxHealth = d.hp;
@@ -260,7 +268,13 @@ export class Mob extends Living {
     if (ok && this.game) {
       const g = this.game;
       g.audio.play(this.health > 0 ? this.type + '_hurt' : this.type + '_death', this.x, this.y + this.h / 2, this.z, 1, 0.9 + rnd() * 0.2);
-      if (!this.def.hostile) { this.state = 'panic'; this.timer = 100; this._pickWander(8); }
+      if (this.def.neutral) {
+        if (source && (source.kind === 'player' || (source.owner && source.owner.kind === 'player'))) {
+          this.angry = true;
+          this._target = source.kind === 'player' ? source : source.owner;
+          this.state = 'chase';
+        } else if (!this._target) { this.state = 'panic'; this.timer = 100; this._pickWander(8); }
+      } else if (!this.def.hostile) { this.state = 'panic'; this.timer = 100; this._pickWander(8); }
       else if (source && source.kind === 'player') this.angry = true;
     }
     return ok;
@@ -355,6 +369,37 @@ export class Mob extends Living {
 
     const pd2 = this.dist2(p.x, p.y, p.z);
     const playerOk = p.alive && p.mode !== 'creative' && !game.peaceful;
+    if (d.neutral) {
+      const t = this._target;
+      if (t && (t.dead || t.health <= 0 || this.dist2(t.x, t.y, t.z) > 14 * 14)) {
+        this._target = null;
+        if (this.state === 'chase') { this.state = 'idle'; this.timer = 40; }
+      }
+      if (!this._target) {
+        if (this.angry && playerOk && pd2 < 12 * 12) this._target = p;
+        else {
+          let bd = 10 * 10;
+          for (const o of game.entities.list) {
+            if (o.kind !== 'mob' || !o.def.hostile || o.dead) continue;
+            const d2 = this.dist2(o.x, o.y, o.z);
+            if (d2 < bd) { bd = d2; this._target = o; }
+          }
+        }
+        if (this._target) this.state = 'chase';
+      }
+      if (this.state === 'chase' && this._target) {
+        const tg = this._target;
+        const dist = Math.sqrt(this.dist2(tg.x, tg.y, tg.z));
+        this._lookAt(tg.x, tg.y + (tg.eyeHeight ? tg.eyeHeight() : 1), tg.z);
+        if (dist > 1.4) this._moveTo(tg.x, tg.z, 0.9);
+        const reach = this.w / 2 + 0.3 + (tg.w || 0.6) / 2 + 0.5;
+        if (this.attackCd === 0 && dist < reach && Math.abs(tg.y - this.y) < 1.6) {
+          this.attackCd = 25;
+          this.attackAnim = 6;
+          tg.hurt(d.dmg, this);
+        }
+      }
+    }
     if (d.hostile) {
       let chase = false;
       if (playerOk && pd2 < 18 * 18) {
@@ -481,8 +526,8 @@ export class EntityManager {
   clear() {
     this.list.length = 0;
   }
-  spawnMob(type, x, y, z) {
-    const m = new Mob(this.game.world, type, x, y, z);
+  spawnMob(type, x, y, z, opts = null) {
+    const m = new Mob(this.game.world, type, x, y, z, opts);
     m.game = this.game;
     return this.add(m);
   }
@@ -491,7 +536,7 @@ export class EntityManager {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (!game.world.isLoaded(Math.floor(e.x), Math.floor(e.z))) {
-        if (e.kind === 'mob' && e.dist2(p.x, p.y, p.z) > 100 * 100) e.dead = true;
+        if (e.kind === 'mob' && !e.persistent && e.dist2(p.x, p.y, p.z) > 100 * 100) e.dead = true;
         continue;
       }
       e.tick(game);
@@ -505,6 +550,7 @@ export class EntityManager {
     let hostile = 0, passive = 0;
     for (const e of this.list) {
       if (e.kind !== 'mob') continue;
+      if (e.persistent) continue; // village structure mobs never despawn
       const d2 = e.dist2(p.x, p.y, p.z);
       if (e.def.hostile) {
         hostile++;
@@ -631,7 +677,7 @@ export class EntityManager {
           }
           const light = lightRGB(e.fire > 0 ? raw | 0x0c : raw, r.sun, r.settings.gamma, this.light);
           const pose = models.poseFor(e.type, e, alpha);
-          models.draw(e.type, m, pose, light, overlay, e.type === 'sheep' && !e.sheared ? ['wool'] : null);
+          models.draw(e.modelName || e.type, m, pose, light, overlay, e.type === 'sheep' && !e.sheared ? ['wool'] : null, e.scale !== 1 ? e.scale : null);
           break;
         }
       }

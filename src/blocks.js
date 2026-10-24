@@ -352,13 +352,22 @@ B.WOOL = 96;
   const jl = blocks[244]; jl.logFaces = [null, new Uint16Array([jl.faces[2], jl.faces[2], jl.faces[0], jl.faces[0], jl.faces[0], jl.faces[0]]), new Uint16Array([jl.faces[0], jl.faces[0], jl.faces[0], jl.faces[0], jl.faces[2], jl.faces[2]])];
   const jw = blocks[245]; jw.logFaces = [null, new Uint16Array([jw.faces[2], jw.faces[2], jw.faces[0], jw.faces[0], jw.faces[0], jw.faces[0]]), new Uint16Array([jw.faces[0], jw.faces[0], jw.faces[0], jw.faces[0], jw.faces[2], jw.faces[2]])];
 
+  // ---- village farm + window wave (251..255) ---------------------------------
+  // crops: vanilla has 4 visual stages; fablecraft crop metas run 0..7 (stage = meta>>1)
+  def(251, 'carrots', 'Carrots', { shape: SH.CROP, tex: 'carrots_0', cutout: 1, h: 0, snd: 'grass', ticks: 1, noItem: 1 });
+  def(252, 'potatoes', 'Potatoes', { shape: SH.CROP, tex: 'potatoes_0', cutout: 1, h: 0, snd: 'grass', ticks: 1, noItem: 1 });
+  def(253, 'beetroots', 'Beetroots', { shape: SH.CROP, tex: 'beetroots_0', cutout: 1, h: 0, snd: 'grass', ticks: 1, noItem: 1 });
+  for (const k of ['carrots', 'potatoes', 'beetroots']) for (let i = 1; i < 8; i++) texId(k + '_' + i);
+  def(254, 'stained_glass_pane_brown', 'Brown Stained Glass Pane', { shape: SH.CUBE, tex: 'brown_stained_glass_pane', cutout: 1, cullSame: 1, h: 0.3, snd: 'glass' });
+  def(255, 'cobweb', 'Cobweb', { tex: 'cobweb', cutout: 1, h: 0, snd: 'cloth', solid: 0, flam: 1 });
+
   // flat 2D icons for thin blocks (3D icons would be nearly invisible)
   const flatIcon = (id, name) => { const d = blocks[id]; if (d) d.flat = name; };
   flatIcon(116, 'sea_pickle');
   flatIcon(126, 'sign'); flatIcon(127, 'banner');
   [128, 129, 130, 131].forEach((id, i) => flatIcon(id, ['cobblestone_wall', 'diorite_wall', 'granite_wall', 'sandstone_wall'][i]));
   flatIcon(140, 'glass_pane'); flatIcon(141, 'iron_bars');
-  flatIcon(240, 'orange_stained_glass_pane'); flatIcon(241, 'yellow_stained_glass_pane'); flatIcon(242, 'white_stained_glass_pane');
+  flatIcon(240, 'orange_stained_glass_pane'); flatIcon(241, 'yellow_stained_glass_pane'); flatIcon(242, 'white_stained_glass_pane'); flatIcon(254, 'brown_stained_glass_pane');
   [156, 157, 158, 159].forEach((id, i) => flatIcon(id, ['oak_fence_gate', 'spruce_fence_gate', 'acacia_fence_gate', 'jungle_fence_gate'][i]));
   [160, 161, 162, 163].forEach((id, i) => flatIcon(id, ['oak_pressure_plate', 'spruce_pressure_plate', 'acacia_pressure_plate', 'jungle_pressure_plate'][i]));
   [164, 165, 166, 167].forEach((id, i) => flatIcon(id, ['oak_trapdoor', 'spruce_trapdoor', 'acacia_trapdoor', 'jungle_trapdoor'][i]));

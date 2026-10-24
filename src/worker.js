@@ -12,10 +12,10 @@ self.onmessage = (e) => {
       gen = new WorldGen(m.seed);
       break;
     case 'gen': {
-      const { blocks, meta } = gen.generate(m.cx, m.cz);
+      const { blocks, meta, ents } = gen.generate(m.cx, m.cz);
       const light = new Uint8Array(blocks.length);
       initLight(blocks, light);
-      self.postMessage({ type: 'gen', cx: m.cx, cz: m.cz, gen: m.gen, blocks, meta, light }, [blocks.buffer, meta.buffer, light.buffer]);
+      self.postMessage({ type: 'gen', cx: m.cx, cz: m.cz, gen: m.gen, blocks, meta, light, ents }, [blocks.buffer, meta.buffer, light.buffer]);
       break;
     }
     case 'light': {

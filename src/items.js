@@ -50,6 +50,11 @@ it('bowl', 'Bowl');
 it('melon_slice', 'Melon Slice', { food: { hunger: 2, sat: 0.6 } });
 it('melon_seeds', 'Melon Seeds', { place: B.MELON_STEM });
 it('pumpkin_seeds', 'Pumpkin Seeds', { place: B.PUMPKIN_STEM });
+it('carrot', 'Carrot', { food: { hunger: 3, sat: 1.8 } });
+it('potato', 'Potato', { food: { hunger: 1, sat: 0.3 } });
+it('baked_potato', 'Baked Potato', { food: { hunger: 5, sat: 3 } });
+it('beetroot', 'Beetroot', { food: { hunger: 1, sat: 0.6 } });
+it('beetroot_seeds', 'Beetroot Seeds', { place: B.BEETROOTS });
 // dyes (colour order matches WOOL_COLORS)
 for (const [ck, cn] of WOOL_COLORS) it(ck + '_dye', cn + ' Dye');
 
@@ -140,6 +145,7 @@ export const SMELT = new Map([
   [B.CLAY, B.TERRACOTTA],
 ]);
 for (let i = 0; i < 16; i++) SMELT.set(192 + i, 224 + i); // coloured terracotta -> coloured glazed terracotta
+SMELT.set(I.POTATO, I.BAKED_POTATO); // potato -> baked potato
 
 // ---- crafting -------------------------------------------------------------------
 const G = {
@@ -351,6 +357,7 @@ shapeless(I.BLUE_DYE, 1, [I.LAPIS]);
 shapeless(I.BROWN_DYE, 1, [I.COAL]);
 shapeless(I.GREEN_DYE, 1, [B.CACTUS]);
 shapeless(I.RED_DYE, 1, [B.POPPY]);
+shapeless(I.RED_DYE, 1, [I.BEETROOT]);
 shapeless(I.BLACK_DYE, 1, [B.OBSIDIAN]);
 // light sources & village furniture
 shaped(B.LANTERN, 4, ['II', 'IT', 'I '], { I: I.IRON_INGOT, T: B.TORCH });
@@ -462,6 +469,14 @@ export function getDrops(id, meta, tool, rand = Math.random) {
       return out;
     }
     case B.PUMPKIN: return rand() < 0.43 ? one(I.PUMPKIN_SEEDS) : one(id);
+    case B.CARROTS: return one(I.CARROT, ri(rand, 2, 4));
+    case B.POTATOES: return one(I.POTATO, ri(rand, 2, 4));
+    case B.BEETROOTS: {
+      const out = [one(I.BEETROOT, ri(rand, 2, 3))];
+      if (rand() < 0.625) out.push(one(I.BEETROOT_SEEDS, 1));
+      return out;
+    }
+    case B.COBWEB: return [];
     case B.DIRT_PATH: return one(B.DIRT);
     case B.CAMPFIRE: return rand() < 0.5 ? one(I.STICK, ri(rand, 1, 2)) : [];
     case B.TALL_GRASS: return shears ? one(id) : rand() < 0.15 ? one(I.WHEAT_SEEDS) : [];

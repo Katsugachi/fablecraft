@@ -747,9 +747,9 @@ export class Player extends Living {
         if (ok) { g.particles.bonemeal(t.x, t.y, t.z); this._consumeHeld(); }
         return ok;
       }
-      case I.WHEAT_SEEDS: case I.MELON_SEEDS: case I.PUMPKIN_SEEDS:
+      case I.WHEAT_SEEDS: case I.MELON_SEEDS: case I.PUMPKIN_SEEDS: case I.BEETROOT_SEEDS:
         if (t.id === B.FARMLAND && t.ny === 1 && w.getBlock(t.x, t.y + 1, t.z) === 0) {
-          w.setBlock(t.x, t.y + 1, t.z, s.id === I.WHEAT_SEEDS ? B.WHEAT : s.id === I.MELON_SEEDS ? B.MELON_STEM : B.PUMPKIN_STEM, 0);
+          w.setBlock(t.x, t.y + 1, t.z, s.id === I.WHEAT_SEEDS ? B.WHEAT : s.id === I.MELON_SEEDS ? B.MELON_STEM : s.id === I.PUMPKIN_SEEDS ? B.PUMPKIN_STEM : B.BEETROOTS, 0);
           g.audio.play('place_grass', t.x + 0.5, t.y + 1, t.z + 0.5, 0.6);
           this._consumeHeld();
           return true;

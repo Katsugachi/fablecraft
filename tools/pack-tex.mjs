@@ -133,6 +133,16 @@ for (const c of COLORS) {
 }
 add('terracotta', 'terracotta.png');
 
+// village farm crops: vanilla has 4 stages; fablecraft crop metas 0..7 (stage = meta >> 1)
+for (const k of ['carrots', 'potatoes', 'beetroots']) for (let s = 0; s < 4; s++) {
+  add(k + '_' + (s * 2), k + '_stage' + s + '.png');
+  add(k + '_' + (s * 2 + 1), k + '_stage' + s + '.png');
+}
+add('cobweb', 'cobweb.png');
+// item icons for the crop wave
+const ITEM = '/home/user/src-assets/vanilla/assets/minecraft/textures/item/';
+for (const n of ['carrot', 'potato', 'baked_potato', 'beetroot']) real['item_' + n] = ITEM + n + '.png';
+
 // misc (files that exist in the pack)
 const MISC = {
   packed_ice: 'packed_ice.png', blue_ice: 'blue_ice.png', sea_pickle: 'sea_pickle.png',
@@ -194,7 +204,7 @@ function toEntry(im) {
 const cache = new Map();
 const load = (file) => {
   if (!cache.has(file)) {
-    const f = path.join(BLOCK, file);
+    const f = path.isAbsolute(file) ? file : path.join(BLOCK, file);
     if (!fs.existsSync(f)) throw new Error('missing vanilla file ' + file);
     const png = PNG.sync.read(fs.readFileSync(f));
     if (png.width !== 16 || png.height % 16 !== 0) throw new Error(file + ' is ' + png.width + 'x' + png.height);
@@ -234,7 +244,7 @@ const WOOL_RGB = [0xe9ecec, 0xf07613, 0xbd44b3, 0x3aafd9, 0xf8c627, 0x70b919, 0x
   0x8e8e86, 0x158991, 0x792aac, 0x35399d, 0x724728, 0x546d1b, 0xa12722, 0x141519];
 COLORS.forEach((c, i) => { out['carpet_' + c] = toEntry(flatFill(WOOL_RGB[i])); });
 // glass panes (clear + stained; vanilla border+arms layout)
-const PANE_C = { glass_pane: [0xcfe8f0, 150], orange_stained_glass_pane: [0xe0731f, 230], yellow_stained_glass_pane: [0xf0c030, 230], white_stained_glass_pane: [0xf5f5f5, 200] };
+const PANE_C = { glass_pane: [0xcfe8f0, 150], orange_stained_glass_pane: [0xe0731f, 230], yellow_stained_glass_pane: [0xf0c030, 230], white_stained_glass_pane: [0xf5f5f5, 200], brown_stained_glass_pane: [0x654c32, 230] };
 for (const [n, [hex, a]] of Object.entries(PANE_C)) out[n] = toEntry(paneFrom(hex, a));
 // buttons (round stone/wood buttons on transparent)
 out['button_stone'] = toEntry(buttonFrom(0x7f7f7f));

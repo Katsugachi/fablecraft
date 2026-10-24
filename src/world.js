@@ -9,6 +9,7 @@ import { meshChunk, PW, PH, PSIZE } from './mesher.js';
 import { initLight } from './light.js';
 import { getDrops, SMELT, fuelTime, maxStack, I } from './items.js';
 import { clamp } from './math.js';
+import { GENTS, GPROFS } from './structure_data.js';
 
 const ckey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 export const bkey = (x, y, z) => ((x + 2097152) * 128 + y) * 4194304 + (z + 2097152);
@@ -123,10 +124,10 @@ export class World {
     while (jobs.length && performance.now() - t0 < budget) {
       const [w, m] = jobs.shift();
       if (m.type === 'gen') {
-        const { blocks, meta } = this.gen.generate(m.cx, m.cz);
-        const light = new Uint8Array(blocks.length);
-        initLight(blocks, light);
-        this._onWorker(w, { type: 'gen', cx: m.cx, cz: m.cz, gen: m.gen, blocks, meta, light });
+        const g = this.gen.generate(m.cx, m.cz);
+        const light = new Uint8Array(g.blocks.length);
+        initLight(g.blocks, light);
+        this._onWorker(w, { type: 'gen', cx: m.cx, cz: m.cz, gen: m.gen, blocks: g.blocks, meta: g.meta, light, ents: g.ents });
       } else if (m.type === 'light') {
         const light = new Uint8Array(m.blocks.length);
         initLight(m.blocks, light);
@@ -386,6 +387,36 @@ export class World {
   }
 
   // ---- chunk streaming ----------------------------------------------------------
+  // Spawn village structure entities (villagers, golems, livestock, cats) stamped by the jigsaw assembler.
+  _spawnVillageEnts(list) {
+    const em = this.host.entities;
+    if (!em || !em.spawnMob) return;
+    const profs = ['farmer', 'fisherman', 'shepherd', 'butcher', 'leatherworker', 'mason', 'toolsmith', 'weaponsmith',
+      'librarian', 'cleric', 'cartographer', 'fletcher', 'armorer'];
+    for (const ent of list) {
+      const [entI, ex, ey, ez, extra] = ent;
+      const name = GENTS[entI];
+      if (!name) continue;
+      const x = ex + 0.5, z = ez + 0.5;
+      if (name === 'villager') {
+        const baby = !!(extra & 0x10);
+        const profI = extra & 0x0f;
+        const b = this.gen.biomeAt(Math.floor(x), Math.floor(z));
+        const t = b === 5 ? 'taiga' : b === 8 ? 'desert' : b === 9 ? 'savanna' : b === 6 ? 'snow' : 'plains';
+        let prof;
+        if (profI === 0) prof = 'nitwit';
+        else if (profI === 1) {
+          let h = (Math.imul(ex + 13, 374761393) + Math.imul(ez + 7, 668265263) + Math.imul(this.seed, 1442695041)) | 0;
+          h = (Math.imul(h ^ (h >>> 13), 1274126177)) | 0;
+          prof = profs[(h >>> 0) % 13];
+        } else prof = GPROFS[profI];
+        em.spawnMob('villager', x, ey, z, { modelName: 'villager_' + t + '_' + prof, scale: baby ? 0.5 : 1, persistent: true, extra });
+      } else if (name === 'cow' || name === 'pig' || name === 'sheep' || name === 'cat' || name === 'iron_golem') {
+        em.spawnMob(name, x, ey, z, { persistent: true });
+      }
+    }
+  }
+
   _onWorker(w, m) {
     this.idle.push(w);
     if (m.gen !== this.genId) return;
@@ -397,6 +428,7 @@ export class World {
       this.chunks.set(k, c);
       this._stitch(c);
       this.stats.generated++;
+      if (m.ents && m.ents.length) this._spawnVillageEnts(m.ents);
       // neighbours may have been waiting for this chunk before they can mesh
     } else if (m.type === 'mesh') {
       const c = this.chunks.get(ckey(m.cx, m.cz));
