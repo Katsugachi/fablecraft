@@ -603,7 +603,12 @@ class Game {
     if (!p.alive) m4.rotZ(m, m, Math.min(1, (p.deathTime + alpha) / 20) * PI / 2);
     const raw = this.world.getLightRaw(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z));
     const pose = this.models.poseFor('player', p, alpha);
-    this.models.draw('player', m, pose, lightRGB(raw, r.sun, r.settings.gamma, this.light), p.hurtTime > 0 ? [1, 0, 0, 0.4] : null);
+    const tags = [];
+    for (const i of [2, 3, 1, 0]) {
+      const s = p.inv.armor[i];
+      if (s && items[s.id] && items[s.id].mat) tags.push(`armor_${items[s.id].mat}_${i}`);
+    }
+    this.models.draw('player', m, pose, lightRGB(raw, r.sun, r.settings.gamma, this.light), p.hurtTime > 0 ? [1, 0, 0, 0.4] : null, tags.length ? tags : null);
   }
 
   _drawHand(alpha, cam, raw) {
@@ -636,7 +641,9 @@ class Game {
       r.useModel();
       gl.uniformMatrix4fv(r.modelProg.u.u_vp, false, proj);
       gl.uniform2f(r.modelProg.u.u_fog, 1e9, 2e9);
-      this.models.draw('arm1p', m, {}, light);
+      const ch = p.inv.armor[1];
+      const aTag = ch && items[ch.id] && items[ch.id].mat ? [`armor_${items[ch.id].mat}_1`] : null;
+      this.models.draw('arm1p', m, {}, light, null, aTag);
       return;
     }
     const using = p.usingItem > 0 ? p.usingItem + alpha : 0;
