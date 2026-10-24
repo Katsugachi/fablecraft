@@ -15,7 +15,9 @@ const ckey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 export const bkey = (x, y, z) => ((x + 2097152) * 128 + y) * 4194304 + (z + 2097152);
 const DX = [1, -1, 0, 0, 0, 0], DY = [0, 0, 1, -1, 0, 0], DZ = [0, 0, 0, 0, 1, -1];
 const DOWN = 3;
-const HAS_BE = (id) => id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED) || id === B.FURNACE || id === B.FURNACE_LIT;
+const HAS_BE = (id) =>
+  id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED) || id === B.FURNACE || id === B.FURNACE_LIT ||
+  id === B.TRIAL_SPAWNER || id === B.VAULT || id === B.OMINOUS_VAULT;
 
 // Background workers come from worker.js, or from an inlined source string in single-file builds.
 let workerUrl = null;
@@ -429,6 +431,14 @@ export class World {
       this._stitch(c);
       this.stats.generated++;
       if (m.ents && m.ents.length) this._spawnVillageEnts(m.ents);
+      // 26.3: trial spawners/vaults keep per-block state (waves, cooldowns,
+      // opened flags) in block entities, which are created lazily otherwise —
+      // pre-create them on chunk load so spawners tick without player contact
+      for (let i = 0; i < c.blocks.length; i++) {
+        const b = c.blocks[i];
+        if (b === B.TRIAL_SPAWNER || b === B.VAULT || b === B.OMINOUS_VAULT)
+          this.getBlockEntity(m.cx * 16 + ((i >> 11) & 15), i & 127, m.cz * 16 + ((i >> 7) & 15), true);
+      }
       // neighbours may have been waiting for this chunk before they can mesh
     } else if (m.type === 'mesh') {
       const c = this.chunks.get(ckey(m.cx, m.cz));
@@ -670,6 +680,10 @@ export class World {
       const id = this.getBlock(x, y, z);
       if (id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED)) be = { type: 'chest', x, y, z, items: new Array(27).fill(null) };
       else if (id === B.FURNACE || id === B.FURNACE_LIT) be = { type: 'furnace', x, y, z, items: [null, null, null], burn: 0, burnMax: 0, cook: 0 };
+      else if (id === B.TRIAL_SPAWNER) be = { type: 'trial_spawner', x, y, z, wave: null, cool: 0, tryT: (Math.random() * 20) | 0 };
+      // vaults remember their opened state in meta bit 0, so a reloaded
+      // already-opened vault cannot be looted a second time
+      else if (id === B.VAULT || id === B.OMINOUS_VAULT) be = { type: id === B.VAULT ? 'vault' : 'ominous_vault', x, y, z, opened: !!(this.getMeta(x, y, z) & 1) };
       if (be) this.blockEntities.set(k, be);
     }
     return be;
@@ -856,6 +870,75 @@ export class World {
     }
     // furnaces
     for (const be of this.blockEntities.values()) if (be.type === 'furnace') this._tickFurnace(be);
+    // trial spawners (26.3 trial chambers)
+    for (const be of this.blockEntities.values()) if (be.type === 'trial_spawner') this._tickTrialSpawner(be);
+  }
+  // ---- 26.3 trial spawner -----------------------------------------------------------
+  // Meta encodes the chamber's mob type (one per chamber at generation, like Java):
+  //   0 = breeze (vanilla rule: spawners in chiseled-tuff rooms run breeze waves)
+  //   1 = zombie (melee), 2 = skeleton (ranged)
+  // Activation: a player within 14 blocks with a clear line of sight, attempted
+  // every 40 ticks (Java: 20). Wave = 2 breeze or 4 melee/ranged mobs. Completing
+  // a wave rolls 50% trial key / 30% ominous trial key, then a 30-minute cooldown.
+  // NOTE: spawner block-entity state is not persisted across world saves (chunk
+  // saves store blocks only), so chambers reset on reload — a documented
+  // fablecraft simplification.
+  _tickTrialSpawner(be) {
+    const g = this.host, p = g.player;
+    if (!p || !p.alive || g.peaceful) return;
+    if (be.cool > 0) { be.cool--; return; }
+    if (be.wave) {
+      be.wave = be.wave.filter((e) => !e.dead && e.health > 0);
+      if (be.wave.length === 0) {
+        this._trialReward(be);
+        be.cool = 30 * 60 * 20; // 30 minutes
+        return;
+      }
+      // abandon the wave if everyone leaves — Java removes the spawner's mobs
+      // when all players are >48 blocks away (no drops)
+      if (p.dist2(be.x + 0.5, be.y + 0.5, be.z + 0.5) > 48 * 48) {
+        const left = be.wave;
+        be.wave = null;
+        for (const e of left) e.dead = true;
+      }
+      return;
+    }
+    if (be.tryT > 0) { be.tryT--; return; }
+    be.tryT = 40;
+    if (p.dist2(be.x + 0.5, be.y + 0.5, be.z + 0.5) > 14 * 14) return;
+    // detection eye sits 1 block above the spawner's top face: the spawner is
+    // ringed by chiseled tuff at its own level, so an eye at the top face would
+    // skim through the ring when raycasting to a floor-level player
+    const sx = be.x + 0.5, sy = be.y + 2.0, sz = be.z + 0.5;
+    const dx = p.x - sx, dy = p.y + p.eyeH - sy, dz = p.z - sz;
+    const dl = Math.hypot(dx, dy, dz);
+    if (!dl || this.raycast(sx, sy, sz, dx / dl, dy / dl, dz / dl, dl)) return;
+    // spawn the wave on air near the spawner
+    const mob = (m) => (m & 3 === 1 ? 'zombie' : m & 3 === 2 ? 'skeleton' : 'breeze');
+    const mobType = mob(this.getMeta(be.x, be.y, be.z));
+    const n = mobType === 'breeze' ? 2 : 4; // Java totals: 2 breeze / 4 combat
+    const wave = [];
+    for (let i = 0; i < n; i++) {
+      for (let a = 0; a < 10; a++) {
+        const ox = be.x + ((Math.random() * 7) | 0) - 3, oz = be.z + ((Math.random() * 7) | 0) - 3;
+        const oy = be.y + 1 + ((Math.random() * 2) | 0);
+        if (!this.isLoaded(ox, oz)) break;
+        if (SOLID[this.getBlock(ox, oy, oz)] || SOLID[this.getBlock(ox, oy + 1, oz)]) continue;
+        const e = g.entities.spawnMob(mobType, ox + 0.5, oy, oz + 0.5, { persistent: true });
+        if (e) wave.push(e);
+        break;
+      }
+    }
+    if (wave.length) { be.wave = wave; g.audio.play('explode', sx, sy, sz, 0.45, 0.4); } // deep activation boom
+  }
+  _trialReward(be) {
+    const g = this.host;
+    const r = Math.random();
+    const id = r < 0.5 ? I.TRIAL_KEY : r < 0.8 ? I.OMINOUS_TRIAL_KEY : 0;
+    if (id) {
+      g.dropItem(be.x + 0.5, be.y + 1.4, be.z + 0.5, id, 1);
+      g.audio.play('pop', be.x + 0.5, be.y + 1, be.z + 0.5, 0.7, 1.3);
+    }
   }
   _scheduledTick(x, y, z) {
     const id = this.getBlock(x, y, z);

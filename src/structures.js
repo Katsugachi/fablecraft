@@ -696,4 +696,176 @@ export function stampCamps(cx, cz, seed, gen, blocks, meta) {
   return out;
 }
 
+// ============================================================================
+// 26.3 TRIAL CHAMBERS
+// ============================================================================
+// Underground trial chambers, one per 34x34-chunk region (own salt, like the
+// camps). The entrance is a 3x3 oxidized-copper doorway at the surface with a
+// 3x3x1 air gap above it, dropping into a shaft that reaches the entrance
+// room. Inside: a hub with copper-bulb lighting, three combat chambers
+// (breeze / melee / ranged — one spawner type per chamber, as in vanilla)
+// and a vault nook with a normal + an ominous vault.
+//
+// fablecraft deviations (documented):
+//   * Java excludes deep-dark biomes; fablecraft has no deep-dark biome, so
+//     any overworld surface may host an entrance.
+//   * spawner block-entity state (cooldowns, open vaults) is not persisted.
+//   * copper does not oxidise over time; the oxidised set is placed as-is.
+
+const TRIAL_SPACING = 34, TRIAL_SALT = 12711181;
+const trialCache = new Map();
+
+function trialStartChunk(cx, cz, seed) {
+  const rx = Math.floor(cx / TRIAL_SPACING), rz = Math.floor(cz / TRIAL_SPACING);
+  const r = spreadRand(rx, rz, seed, TRIAL_SALT);
+  const b = TRIAL_SPACING - 8;
+  return [rx * TRIAL_SPACING + r.nextInt(b), rz * TRIAL_SPACING + r.nextInt(b)];
+}
+
+// Builds all cells (world coords) for a chamber whose entrance is at (ex, ey, ez),
+// where ey is the surface height at the entrance column.
+function buildTrial(ex, ey, ez, seed) {
+  const surf = ey;
+  const F = Math.max(30, Math.min(54, surf - 28)); // room floor (design: clamp(surface-28, 30, 54))
+  const cells = [];
+  const put = (x, y, z, id, meta = 0) => { if (y >= 0 && y < WH) cells.push([ex + x, y, ez + z, id, meta]); };
+  const AIR = 0;
+
+  // room rectangles [x0, x1, z0, z1] (inclusive, relative to entrance)
+  const ROOMS = [
+    [-5, 4, -5, -1], // entrance room
+    [-4, 3, 4, 9], // hub
+    [-12, -8, 4, 11], // west chamber (breeze)
+    [7, 11, 4, 11], // east chamber (melee)
+    [-4, 3, 13, 17], // south chamber (ranged)
+    [-4, -2, 1, 3], // vault nook (NW of hub)
+  ];
+  const CORRIDORS = [
+    [-1, 0, 0, 3], // entrance -> hub
+    [-7, -5, 6, 7], // hub -> west
+    [4, 6, 6, 7], // hub -> east
+    [-1, 0, 10, 12], // hub -> south
+  ];
+
+  // 1. carve air (rooms + corridors + shaft)
+  for (const [x0, x1, z0, z1] of [...ROOMS, ...CORRIDORS])
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++)
+      for (let y = F + 1; y <= F + 4; y++) put(x, y, z, AIR);
+  for (let y = F + 1; y < surf; y++) for (const x of [-1, 0]) for (const z of [-4, -3]) put(x, y, z, AIR);
+
+  // 2. floor + ceiling slabs over the whole footprint
+  for (let x = -12; x <= 11; x++) for (let z = -5; z <= 17; z++) {
+    put(x, F, z, B.POLISHED_TUFF);
+    put(x, F + 5, z, B.TUFF);
+  }
+
+  // 3. outer shell walls
+  for (let z = -6; z <= 18; z++) { for (let y = F; y <= F + 5; y++) { put(-13, y, z, B.TUFF); put(12, y, z, B.TUFF); } }
+  for (let x = -13; x <= 12; x++) { for (let y = F; y <= F + 5; y++) { put(x, y, -6, B.TUFF); put(x, y, 18, B.TUFF); } }
+
+  // 4. interior walls with 2-wide doorways
+  const wall = (x0, x1, z0, z1, skip) => {
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
+      if (skip && skip.includes(x + ',' + z)) continue;
+      for (let y = F + 1; y <= F + 4; y++) put(x, y, z, B.TUFF);
+    }
+  };
+  wall(-5, -5, 4, 11, ['-5,6', '-5,7']); // hub west face
+  wall(4, 4, 4, 11, ['4,6', '4,7']); // hub east face
+  wall(-4, 3, 10, 10, ['-1,10', '0,10']); // hub south face
+  wall(-12, -8, 3, 3); // west chamber north
+  wall(-12, -8, 12, 12); // west chamber south
+  wall(7, 11, 3, 3); // east chamber north
+  wall(7, 11, 12, 12); // east chamber south
+  wall(-5, -5, 13, 17); // south chamber west
+  wall(4, 4, 13, 17); // south chamber east
+  wall(-6, -6, -5, -1); // entrance room west
+  wall(5, 5, -5, -1); // entrance room east
+  wall(-5, 4, -6, -6); // entrance room north
+  wall(-5, 4, 0, 0, ['-1,0', '0,0']); // entrance room south
+  wall(-5, -5, 1, 3); // vault nook west face
+
+  // doorway lintels (chiseled tuff bricks over each 2-wide doorway)
+  for (const [x, z0, z1] of [[-5, 6, 7], [4, 6, 7], [-1, 10, 10], [0, 10, 10], [-1, 0, 0], [0, 0, 0]])
+    for (let z = z0; z <= z1; z++) for (let y = F + 3; y <= F + 4; y++) put(x, y, z, B.CHISELED_TUFF_BRICKS);
+
+  // 5. copper-bulb ceiling lights: one row per room + corridor lights
+  for (const [x0, x1, z0, z1] of ROOMS) {
+    const zm = (z0 + z1) >> 1;
+    for (let x = x0 + 2; x <= x1 - 2; x += 3) put(x, F + 5, zm, B.COPPER_BULB);
+  }
+  for (const [x0, x1, z0, z1] of CORRIDORS) put((x0 + x1) >> 1, F + 5, (z0 + z1) >> 1, B.COPPER_BULB);
+
+  // 6. trial spawners on chiseled-tuff pedestals (surrounded, as vanilla)
+  const spawner = (x, z, meta) => {
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) put(x + dx, F + 1, z + dz, B.CHISELED_TUFF);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      if (dx === 0 && dz === 0) continue;
+      put(x + dx, F + 2, z + dz, B.CHISELED_TUFF);
+    }
+    put(x, F + 2, z, B.TRIAL_SPAWNER, meta);
+  };
+  spawner(-10, 7, 0); // west: breeze
+  spawner(9, 7, 1); // east: zombie (melee)
+  spawner(-1, 15, 2); // south: skeleton (ranged)
+
+  // 7. vault nook: platform + one normal and one ominous vault + divider pillar
+  for (let x = -4; x <= -3; x++) for (let z = 1; z <= 3; z++) put(x, F + 1, z, B.POLISHED_TUFF);
+  for (let y = F + 1; y <= F + 4; y++) put(-2, y, 1, B.TUFF);
+  put(-4, F + 2, 2, B.VAULT);
+  put(-3, F + 2, 2, B.OMINOUS_VAULT);
+
+  // 8. surface entrance: 3x3 oxidized-copper doorway + 3x3x1 gap,
+  //    5x5 oxidized-cut-copper step, hole through the shaft centre
+  for (let x = -2; x <= 0; x++) for (let z = -5; z <= -3; z++) {
+    const ring = x === -2 || x === 0 || z === -5 || z === -3;
+    put(x, surf, z, ring ? B.OXIDIZED_COPPER : AIR);
+    put(x, surf + 1, z, AIR); // the 3x3x1 gap above the doorway
+  }
+  for (let x = -3; x <= 1; x++) for (let z = -6; z <= -2; z++) {
+    if (x >= -2 && x <= 0 && z >= -5 && z <= -3) continue;
+    put(x, surf, z, B.OXIDIZED_CUT_COPPER);
+  }
+
+  return { cells, bounds: [ex - 13, F, ez - 6, ex + 12, surf + 1, ez + 18] };
+}
+
+export function stampTrials(cx, cz, seed, gen, blocks, meta) {
+  const out = [];
+  const x0 = cx * CH, z0 = cz * CH;
+  const rx = Math.floor(cx / TRIAL_SPACING), rz = Math.floor(cz / TRIAL_SPACING);
+  const seen = new Set();
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+    const [scx, scz] = trialStartChunk((rx + dx) * TRIAL_SPACING, (rz + dz) * TRIAL_SPACING, seed);
+    const key = scx + ',' + scz;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const ck = seed + ':t:' + key;
+    let t = trialCache.get(ck);
+    if (t === undefined) {
+      try {
+        const sx = scx * CH + 8, sz = scz * CH + 8;
+        const surf = gen.heightAt(sx, sz);
+        t = surf >= 40 ? buildTrial(sx, surf, sz, seed) : null;
+      } catch (e) {
+        t = null;
+      }
+      if (trialCache.size > 128) trialCache.clear();
+      trialCache.set(ck, t);
+    }
+    if (!t) continue;
+    const b = t.bounds;
+    if (b[0] > x0 + CH - 1 || b[3] < x0 || b[2] > z0 + CH - 1 || b[5] < z0) continue;
+    // own stamp pass — explicitly writes AIR for the carved rooms
+    for (const [wx, wy, wz, id, mt] of t.cells) {
+      const dxw = wx - x0, dzw = wz - z0;
+      if (dxw < 0 || dxw >= CH || dzw < 0 || dzw >= CH || wy < 0 || wy >= WH) continue;
+      const i = (dxw << 11) | (dzw << 7) | wy;
+      blocks[i] = id;
+      meta[i] = mt;
+    }
+  }
+  return out;
+}
+
 export { GENTS, GPROFS };

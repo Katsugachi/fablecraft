@@ -203,16 +203,102 @@ Trial Chambers/Breeze moved to iteration 4, Creaking to iteration 5.
   `.mcmeta` animation not implemented (static first frame); copper chest textures
   kept from iteration-2 pack (not present as PNGs in the 26.3 asset branch).
 
-### Iteration 4 — Deep-feature structures: Trial Chambers + Breeze
-- **Research:** trial_chambers.json + pools + templates (encapsulate carve-out,
-  deep Y, tuff terrain); breeze mob behavior (wiki: hover/charge/dash, breeze rod).
-- **Program:** trial chamber jigsaw placement, vaults/heavy core (drop calibrite →
-  loot), trial spawner (periodic breeze wave), **breeze mob** (charge/dash AI,
-  breeze rod projectile).
-- **Texturing:** tuff/brick/polished, copper bulbs/lanterns, vault, heavy core,
-  trial spawner, breeze rod — breeze skin (all present in the 26.3 asset branch).
-- **Proof:** locate trial chamber (deterministic per seed), navigate the
-  entry→chamber→vault path with the camera, assert heavy core + breezes.
+### Iteration 4 — Deep-feature structures: Trial Chambers + Breeze ✅ COMPLETE
+- **Research:** trial chambers (34-chunk placement, one spawner per chamber room,
+  deep Y, tuff terrain; spawner activation ≤14 blocks + LOS, breeze waves 2/1/20t,
+  combat waves 4/2/40t, 50% trial key on completion, 30-min cooldown; vaults with
+  heavy core 7.5% ominous, loot incl. wind charges ~25%); breeze mob (30 HP,
+  hover/leap, wind charge ≤16 b cd 32t, 1 HP direct hit + wind burst that toggles
+  non-iron doors, deflects projectiles, drops 1–2 breeze rods + 10 XP, fall-immune);
+  26.3 recipe verification (wind charge = 4 per rod; mace durability 500 Java,
+  attack speed 0.6; cut copper 4 blocks 2×2 → 4; chiseled copper 2 cut slabs → 1
+  (approximated as 2 cut stacked, fablecraft has no cut-copper slab); copper grate
+  4 blocks diamond → 4; copper bulb 3 copper + redstone → 4, vanilla blaze-rod
+  ingredient omitted — fablecraft has no blaze rod; player-thrown wind charges
+  burst 10% harder).
+- **Program:**
+  - `structures.js` `buildTrial`: hub + entry/west/east/south rooms + vault room
+    (floor F = clamp(surf−28, 30, 54), tuff ceiling F+5, polished-tuff-slab floor),
+    3×3 chiseled-tuff pedestals with spawners at F+2 (block meta 0/1/2 = breeze /
+    zombie / skeleton — one spawner per chamber, like Java), 2-wide corridors,
+    2×2 shaft to surface, 3×3 oxidized-copper entrance ring + oxidized-cut-copper
+    apron. `worldgen.js` `stampTrials`: 34-chunk spacing, salt 12711181, skips the
+    start chunk (oH < 40 guard).
+  - `world.js`: block entities for `trial_spawner` / `vault` / `ominous_vault`
+    (vault `opened` restored from meta bit 0 so a reloaded opened vault can't be
+    looted twice). BE pre-create pass in the `_onWorker` `gen` handler — lazy
+    `getBlockEntity` had no chunk-load hook, so spawner BEs never existed and
+    never ticked; pre-creation covers both the Worker and LocalWorker gen paths.
+  - `world.js` `_tickTrialSpawner`: 40-tick attempts, ≤14-block range + clear LOS
+    (detection eye at `be.y + 2.0` — one block above the spawner top face, so the
+    raycast can't skim the chiseled-tuff ring or the spawner's own cube), spawns
+    a 2-breeze or 4-combat wave on air near the spawner; wave completion rolls
+    50% trial key / 30% ominous key, then a 30-minute cooldown; waves are
+    abandoned (mobs unpersisted) when the player leaves >48 blocks.
+  - `mobs.js`: **Breeze** (30 HP, 1.77 h × 0.6 w; idle wander near its spawn,
+    chase ≤24 blocks + LOS, leaping movement 0.55/0.62, wind charge <16 blocks
+    cd 32t, melee 1× difficulty, deflects arrows <3 b, drops 1–2 breeze rods +
+    10 XP, fall-damage immune) and **WindCharge** projectile (16-block cap,
+    near-straight gentle arc, 1× difficulty on direct hit + wind burst:
+    knockback within 2.5 b and toggle of non-iron doors, `power` field so
+    player-thrown charges burst 10% harder).
+  - `player.js`: mace smash (fall-damage-scaled damage + shockwave knockback,
+    durability 1/hit, cap 3-block smash) and right-click wind-charge throw
+    (25-tick cooldown, power 1.1).
+  - `items.js`: breeze rod, wind charge, trial key / ominous trial key, mace
+    (durability 500 per Java), full copper-block family recipes in vanilla form.
+- **Texturing:** all from the 26.3 asset branch (PixiGeko/Minecraft-default-assets
+  `26.3`): tuff, chiseled tuff + bricks, polished tuff, copper block / cut /
+  chiseled / oxidized / oxidized cut / oxidized chiseled / grate / bulb / door /
+  trapdoor, trial spawner, vault, ominous vault, heavy core; items: breeze rod,
+  trial key, ominous trial key, mace, wind charge. Breeze: 26.3 32×32 ghost
+  sprite with stretch-sampling + custom rig (not humanoid).
+- **Proof:** `proof-263.mjs` extended — Node ground truth computes the trial
+  chamber (spawner positions + exact per-chunk block counts across its 6 chunks);
+  camera teleports to the surface entrance and into the NW corner of the west
+  chamber (clear of the pedestal); asserts block counts 288–306 equal the truth
+  exactly; survival mob test: the spawner must summon a 2-breeze wave and the
+  breezes must fire a wind charge within 75 s (breeze targeting needs LOS, so a
+  breeze stuck behind the chiseled-tuff pedestal wanders randomly until clear —
+  observed charge delay 0.4–48 s across runs).
+  - **Result: PROOF PASS** (two consecutive runs, 2026-10-24): camp counts exact,
+    dappled counts exact, trial counts exact
+    {tuff 1408, chiseled_tuff_bricks 16, polished_tuff 558, chiseled_tuff 51,
+    oxidized_copper 8, oxidized_cut_copper 16, copper_bulb 12, trial_spawner 3,
+    vault 1, ominous_vault 1, all others 0}, breeze wave spawned + wind charge
+    fired, 0 missing textures, 0 page errors. 4 screenshots (camp, dappled,
+    trial entrance, west chamber with live breeze wave).
+  - Build: single file **1,486,233 B**.
+- **Bugs found by the proof (all fixed):**
+  1. Trial-spawner BEs were never created — `getBlockEntity` is lazy and nothing
+     ticked them without player contact → BE pre-create on chunk load.
+  2. Spawner LOS raycast self-hit: the detection eye was inside the spawner's own
+     cube (DDA tests the origin cell first) → always "blocked". Eye moved above
+     the spawner, then raised to `be.y + 2.0` because at `+1.3` it still skimmed
+     the chiseled-tuff ring top face on the way down to a floor-level player.
+  3. `Breeze` constructor lacked the `type` parameter that `spawnMob` always
+     passes as the second argument — every argument was off by one (x = 'breeze',
+     y = x, z = oy, opts = z), so spawned breezes had NaN coordinates.
+  4. `saveWorld` JSON-serialized live block entities — a spawner with an active
+     wave is a circular structure (be.wave → mob → world → blockEntities → be)
+     → "Converting circular structure to JSON" on the ~45 s autosave. BEs are
+     now persisted as per-type plain data; the wave is transient (chambers reset
+     on reload, matching the vanilla simplification noted in `_tickTrialSpawner`).
+  5. **Pre-existing (found by this iteration's proof):** the chunk-save RLE
+     decoder (`unrle` in `save.js`) doubled run lengths for the 16-bit block
+     view (`o*2 + a[i]*2`) while the encoder counts runs in bytes — every
+     reloaded modified chunk decoded to garbage ids (stone 3 → 0x0303, …),
+     silently corrupting reloaded worlds and crashing the mesher
+     ("reading 'tint'"). Fixed to decode byte-offsets for both views, plus a
+     `maxBlockId` guard in `getChunk` so legacy corrupted saves fall back to
+     fresh regeneration. Verified end-to-end: a chunk modified + autosaved +
+     reloaded in-run now decodes to the exact same data (per-chunk counts stay
+     exact across save/load cycles).
+- **Known (documented) gaps:** spawner mob-type is fixed per chamber at
+  generation (meta 0/1/2) rather than rolled per wave; vault loot is the fablecraft
+  approximation of the Java tables (no trident/elytra items); wave mobs are
+  unpersisted on save; copper bulb recipe omits the vanilla blaze-rod ingredient
+  (no blaze rod in fablecraft).
 
 ### Iteration 5 — Creaking + remaining common structures
 - **Research:** creaking mob behavior (moves only when unobserved → line-of-sight

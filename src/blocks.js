@@ -423,6 +423,33 @@ B.WOOL = 96;
   B.POPLAR_SLAB = 261; B.POPLAR_STAIRS = 262; B.POPLAR_FENCE = 263; B.POPLAR_FENCE_GATE = 264; B.POPLAR_DOOR = 265; B.POPLAR_TRAPDOOR = 266;
   B.POPLAR_PRESSURE_PLATE = 267; B.POPLAR_BUTTON = 268; B.POPLAR_SAPLING = 269; B.POPLAR_LEAVES_RED = 270; B.POPLAR_LEAVES_ORANGE = 271; B.POPLAR_LEAVES_YELLOW = 272;
   B.LEAF_LITTER = 273; B.RED_SHRUB = 274; B.SHELF_MUSHROOM = 275; B.BIG_SHELF_MUSHROOM = 276; B.CUSHION = 277; B.STRAW_BED = 278;
+  B.TUFF = 288; B.TUFF_BRICKS = 289; B.CHISELED_TUFF_BRICKS = 290; B.POLISHED_TUFF = 291; B.CHISELED_TUFF = 292;
+  B.COPPER_BLOCK = 293; B.CUT_COPPER = 294; B.CHISELED_COPPER = 295; B.OXIDIZED_COPPER = 296;
+  B.OXIDIZED_CUT_COPPER = 297; B.OXIDIZED_CHISELED_COPPER = 298; B.COPPER_GRATE = 299; B.COPPER_BULB = 300;
+  B.COPPER_DOOR = 301; B.COPPER_TRAPDOOR = 302; B.TRIAL_SPAWNER = 303; B.VAULT = 304; B.OMINOUS_VAULT = 305; B.HEAVY_CORE = 306;
+
+  // ---- iteration 4: 26.3 trial chambers + copper --------------------------------
+  // ids 288-306 (within the 512-id block space). Real 26.3 (Wilderness Bound)
+  // textures are packed by tools/pack-all-263.mjs.
+  def(288, 'tuff', 'Tuff', { tex: 'tuff', h: 1.5, t: PICK, snd: 'stone' });
+  def(289, 'tuff_bricks', 'Tuff Bricks', { tex: 'tuff_bricks', h: 1.5, t: PICK, snd: 'stone' });
+  def(290, 'chiseled_tuff_bricks', 'Chiseled Tuff Bricks', { tex: { side: 'chiseled_tuff_bricks', top: 'chiseled_tuff_bricks_top', bottom: 'chiseled_tuff_bricks' }, h: 1.5, t: PICK, snd: 'stone' });
+  def(291, 'polished_tuff', 'Polished Tuff', { tex: 'polished_tuff', h: 1.5, t: PICK, snd: 'stone' });
+  def(292, 'chiseled_tuff', 'Chiseled Tuff', { tex: { side: 'chiseled_tuff', top: 'chiseled_tuff_top', bottom: 'chiseled_tuff' }, h: 1.5, t: PICK, snd: 'stone' });
+  def(293, 'copper_block', 'Block of Copper', { tex: 'copper_block', h: 3, t: AXE, snd: 'metal' });
+  def(294, 'cut_copper', 'Cut Copper', { tex: 'cut_copper', h: 3, t: AXE, snd: 'metal' });
+  def(295, 'chiseled_copper', 'Chiseled Copper', { tex: 'chiseled_copper', h: 3, t: AXE, snd: 'metal' });
+  def(296, 'oxidized_copper', 'Oxidized Copper', { tex: 'oxidized_copper', h: 3, t: AXE, snd: 'metal' });
+  def(297, 'oxidized_cut_copper', 'Oxidized Cut Copper', { tex: 'oxidized_cut_copper', h: 3, t: AXE, snd: 'metal' });
+  def(298, 'oxidized_chiseled_copper', 'Oxidized Chiseled Copper', { tex: 'oxidized_chiseled_copper', h: 3, t: AXE, snd: 'metal' });
+  def(299, 'copper_grate', 'Copper Grate', { tex: 'copper_grate', cutout: 1, h: 3, t: AXE, snd: 'metal' });
+  def(300, 'copper_bulb', 'Copper Bulb', { tex: 'copper_bulb_lit', cutout: 1, emit: 14, h: 3, t: AXE, snd: 'metal' });
+  def(301, 'copper_door', 'Copper Door', { shape: SH.DOOR, tex: { side: 'copper_door_bottom', top: 'copper_door_top', bottom: 'copper_door_bottom' }, cutout: 1, h: 3, t: AXE, snd: 'metal', flat: 'copper_door_bottom' });
+  def(302, 'copper_trapdoor', 'Oxidized Copper Trapdoor', { shape: SH.TRAPDOOR, tex: 'oxidized_copper_trapdoor', cutout: 1, h: 3, t: AXE, snd: 'metal' });
+  def(303, 'trial_spawner', 'Trial Spawner', { tex: { side: 'trial_spawner_side_inactive', top: 'trial_spawner_top_inactive', bottom: 'trial_spawner_bottom' }, h: 1, snd: 'stone', noItem: 1 });
+  def(304, 'vault', 'Vault', { shape: SH.CHEST, tex: { top: 'vault_top', side: 'vault_side_off', front: 'vault_front_off' }, h: 1, snd: 'stone', noItem: 1, metaFaces: (m) => (m & 1 ? new Uint16Array([texId('vault_side_off'), texId('vault_side_off'), texId('vault_top'), texId('vault_top'), texId('vault_side_on'), texId('vault_front_on')]) : new Uint16Array([texId('vault_side_off'), texId('vault_side_off'), texId('vault_top'), texId('vault_top'), texId('vault_side_off'), texId('vault_front_off')])) });
+  def(305, 'ominous_vault', 'Ominous Vault', { shape: SH.CHEST, tex: { top: 'vault_top_ominous', side: 'vault_side_off_ominous', front: 'vault_front_off_ominous' }, h: 1, snd: 'stone', noItem: 1, metaFaces: (m) => (m & 1 ? new Uint16Array([texId('vault_side_off_ominous'), texId('vault_side_off_ominous'), texId('vault_top_ominous'), texId('vault_top_ominous'), texId('vault_side_on_ominous'), texId('vault_front_on_ominous')]) : new Uint16Array([texId('vault_side_off_ominous'), texId('vault_side_off_ominous'), texId('vault_top_ominous'), texId('vault_top_ominous'), texId('vault_side_off_ominous'), texId('vault_front_off_ominous')])) });
+  def(306, 'heavy_core', 'Heavy Core', { tex: 'heavy_core', cutout: 1, h: 3, snd: 'metal' });
 
   // ---- iteration 3 texture id pre-registration ---------------------------------
   for (let i = 0; i < 16; i++) { texId('wool_' + i); texId('cushion_' + WOOL_COLORS[i][0]); texId('concrete_' + WOOL_COLORS[i][0]); }

@@ -1,6 +1,6 @@
 // FableCraft - game bootstrap, main loop, input, camera and glue between the systems.
 import { m4, clamp, lerp } from './math.js';
-import { B, blocks, SEA, WH, FLUID, SOLID } from './blocks.js';
+import { B, blocks, SEA, WH, FLUID, SOLID, BMAX } from './blocks.js';
 import { items, itemByKey, I } from './items.js';
 import { Renderer, lightRGB } from './renderer.js';
 import { World } from './world.js';
@@ -282,7 +282,7 @@ class Game {
     const size = 16 * 16 * WH;
     this.world = new World(meta.seed, this, {
       renderDist: this.settings.renderDist, time: meta.time || 0, dayTime: meta.dayTime ?? 1000, savedChunks: saved,
-      loadSaved: (cx, cz) => this.save.getChunk(meta.id, cx, cz, size),
+      loadSaved: (cx, cz) => this.save.getChunk(meta.id, cx, cz, size, BMAX - 1),
       storeChunk: (c) => { this.save.putChunk(meta.id, c.cx, c.cz, c.blocks, c.meta); saved.add(c.cx + ',' + c.cz); },
     });
     if (meta.blockEntities) for (const [k, be] of meta.blockEntities) this.world.blockEntities.set(k, be);
@@ -346,7 +346,18 @@ class Game {
     m.time = w.time; m.dayTime = w.dayTime;
     m.mode = p.mode;
     m.worldSpawn = this.worldSpawn;
-    m.blockEntities = [...w.blockEntities.entries()];
+    // block entities are persisted as plain data; a trial spawner's `wave`
+    // holds live mob references (mob -> world -> blockEntities -> be would be
+    // a circular structure), and it is transient anyway — chambers reset on
+    // reload like they do in vanilla (see _tickTrialSpawner note)
+    m.blockEntities = [...w.blockEntities.entries()].map(([k, be]) => {
+      const o = { type: be.type, x: be.x, y: be.y, z: be.z };
+      if (be.items) o.items = be.items;
+      if (be.type === 'furnace') { o.burn = be.burn; o.burnMax = be.burnMax; o.cook = be.cook; }
+      else if (be.type === 'trial_spawner') { o.tryT = be.tryT; o.cool = be.cool; }
+      else if (be.opened !== undefined) o.opened = be.opened;
+      return [k, o];
+    });
     if (p.alive) {
       m.player = {
         x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, health: p.health, food: p.food, saturation: p.saturation,

@@ -14,20 +14,16 @@ function rle(a) {
   }
   return new Uint8Array(out);
 }
+// rle() encodes the raw BYTES of the buffer, so runs are counted in bytes —
+// the u16 view is just a reinterpretation of the decoded byte stream (the
+// encoder never emits element counts, only byte counts).
 function unrle(a, bytes, u16) {
   const out = u16 ? new Uint16Array(new ArrayBuffer(bytes)) : new Uint8Array(bytes);
+  const u8 = new Uint8Array(out.buffer);
   let o = 0;
-  if (u16) {
-    const u8 = new Uint8Array(out.buffer);
-    for (let i = 0; i < a.length; i += 2) {
-      u8.fill(a[i + 1], o * 2, o * 2 + a[i] * 2);
-      o += a[i];
-    }
-  } else {
-    for (let i = 0; i < a.length; i += 2) {
-      out.fill(a[i + 1], o, o + a[i]);
-      o += a[i];
-    }
+  for (let i = 0; i + 1 < a.length; i += 2) {
+    u8.fill(a[i + 1], o, o + a[i]);
+    o += a[i];
   }
   return out;
 }
@@ -81,7 +77,7 @@ export class Save {
     for (const k of keys) set.add(k.slice(id.length + 1));
     return set;
   }
-  async getChunk(id, cx, cz, size) {
+  async getChunk(id, cx, cz, size, maxBlockId = 0) {
     const k = `${id}:${cx},${cz}`;
     let rec = this.pending.get(k);
     if (!rec) {
@@ -89,8 +85,14 @@ export class Save {
       if (!db) return null;
       rec = await req(db.transaction('chunks').objectStore('chunks').get(k));
     }
-    if (!rec) return null;
-    return { blocks: unrle(rec.b, size * 2, true), meta: unrle(rec.m, size, false) };
+    if (!rec || !rec.b || !rec.m) return null;
+    const blocks = unrle(rec.b, size * 2, true);
+    // reject corrupted saves (e.g. written by the old buggy RLE decoder) so
+    // the chunk regenerates from the seed instead of loading garbage ids
+    if (maxBlockId) {
+      for (let i = 0; i < blocks.length; i++) if (blocks[i] > maxBlockId) return null;
+    }
+    return { blocks, meta: unrle(rec.m, size, false) };
   }
   putChunk(id, cx, cz, blocks, meta) {
     const k = `${id}:${cx},${cz}`;

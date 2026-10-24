@@ -194,6 +194,99 @@ export class Arrow extends Entity {
   }
 }
 
+// 26.3 wind charge: thrown by breezes. Travels at most 16 blocks, deals 1 HP on
+// a direct hit, and either way ends in a wind burst that knocks back nearby
+// entities and toggles doors/trapdoors (vanilla behaviour).
+export class WindCharge extends Entity {
+  constructor(world, x, y, z, vx, vy, vz, owner) {
+    super(world, x, y, z);
+    this.kind = 'wind_charge';
+    this.w = 0.4; this.h = 0.4;
+    this.vx = vx; this.vy = vy; this.vz = vz;
+    this.owner = owner;
+    this.power = 1; // vanilla: player-thrown charges burst 10% harder
+    this.travel = 0;
+    const sp = Math.hypot(vx, vy, vz) || 1;
+    this.yaw = Math.atan2(vx, vz);
+    this.pitch = Math.atan2(vy, sp);
+    this.pyaw = this.yaw; this.ppitch = this.pitch;
+  }
+  tick(game) {
+    this.savePrev();
+    this.age++;
+    if (this.age % 2 === 0) game.particles.spawn('p_white', this.x, this.y, this.z, (rnd() - 0.5) * 0.06, 0.02, (rnd() - 0.5) * 0.06, 8, 0.12, { bright: true });
+    const speed = Math.hypot(this.vx, this.vy, this.vz);
+    if (speed < 0.05 || this.travel > 16) { this.dead = true; return; }
+    const dx = this.vx / speed, dy = this.vy / speed, dz = this.vz / speed;
+    let hit = this.world.raycast(this.x, this.y, this.z, dx, dy, dz, speed);
+    let maxT = hit ? hit.dist : speed;
+    let target = null;
+    for (const e of game.entities.list) {
+      if (!(e instanceof Living) || !e.alive || e === this.owner) continue;
+      const t = rayEntity(this.x, this.y, this.z, dx, dy, dz, e, 0.3);
+      if (t !== null && t < maxT) { maxT = t; target = e; }
+    }
+    if (target) {
+      this.travel += maxT;
+      this.x += dx * maxT; this.y += dy * maxT; this.z += dz * maxT;
+      target.hurt(game.difficultyScale, this.owner || this); // 1 (1.5 Hard)
+      this._burst(game, target);
+      this.dead = true;
+      return;
+    }
+    if (hit) {
+      this.travel += hit.dist;
+      this.x += dx * hit.dist; this.y += dy * hit.dist; this.z += dz * hit.dist;
+      this._burst(game);
+      this.dead = true;
+      return;
+    }
+    this.travel += speed;
+    this.x += this.vx; this.y += this.vy; this.z += this.vz;
+    this.vy -= 0.008; // near-straight with a very gentle arc
+    this._aim();
+  }
+  _aim() {
+    const sp = Math.hypot(this.vx, this.vz) || 1;
+    this.yaw = Math.atan2(this.vx, this.vz);
+    this.pitch = Math.atan2(this.vy, sp);
+  }
+  _burst(game, direct) {
+    const w = this.world;
+    const p = this.power;
+    for (const e of game.entities.list) {
+      if (!e.alive || e === this.owner) continue;
+      const d2 = e.dist2(this.x, this.y + 0.3, this.z);
+      if (d2 > 2.5 * 2.5) continue;
+      const l = Math.sqrt(d2) || 1;
+      e.vx += ((e.x - this.x) / l) * 0.35 * p + this.vx * 0.15;
+      e.vy += 0.22 * p + ((e.y - this.y) / l) * 0.1;
+      e.vz += ((e.z - this.z) / l) * 0.35 * p + this.vz * 0.15;
+    }
+    // a breeze hit by its own wind burst is launched upward (vanilla)
+    if (direct && direct.kind === 'mob' && direct.type === 'breeze') direct.vy = Math.max(direct.vy, 1.1);
+    // the wind toggles nearby doors & trapdoors (vanilla), non-iron only
+    const done = new Set();
+    for (let bx = -2; bx <= 2; bx++) for (let by = -2; by <= 2; by++) for (let bz = -2; bz <= 2; bz++) {
+      const x = Math.floor(this.x) + bx, y = Math.floor(this.y) + by, z = Math.floor(this.z) + bz;
+      if (!w.isLoaded(x, z)) continue;
+      const b = w.getBlock(x, y, z);
+      if (b === B.DOOR || b === B.COPPER_DOOR || (b >= 164 && b <= 167) || b === B.COPPER_TRAPDOOR) {
+        const base = (b === B.DOOR || b === B.COPPER_DOOR) ? (w.getMeta(x, y, z) & 8 ? y - 1 : y) : y;
+        const k = x + ',' + base + ',' + z;
+        if (done.has(k)) continue;
+        done.add(k);
+        if (b === B.DOOR || b === B.COPPER_DOOR) {
+          const m = w.getMeta(x, base, z) ^ 4;
+          w.setBlock(x, base, z, b, m & 7, 0);
+          w.setBlock(x, base + 1, z, b, (m & 7) | 8, 0);
+        } else w.setMeta(x, y, z, w.getMeta(x, y, z) ^ 4);
+      }
+    }
+    for (let i = 0; i < 10; i++) game.particles.spawn('p_white', this.x + (rnd() - 0.5) * 1.6, this.y + (rnd() - 0.5) * 1.6, this.z + (rnd() - 0.5) * 1.6, (rnd() - 0.5) * 0.18, 0.05 + rnd() * 0.12, (rnd() - 0.5) * 0.18, 14, 0.15, { bright: true });
+  }
+}
+
 // ray vs entity AABB (grown by pad); returns distance or null
 export function rayEntity(ox, oy, oz, dx, dy, dz, e, pad = 0) {
   const hw = e.w / 2 + pad;
@@ -227,6 +320,10 @@ export const MOBS = {
   villager: { w: 0.6, h: 1.95, hp: 20, speed: 0.2, xp: 12, panic: 1.4 },
   iron_golem: { w: 1.4, h: 2.7, hp: 50, speed: 0.24, dmg: 6, xp: 16, panic: 1.1, drops: [[I.IRON_INGOT, 3, 5]], neutral: true },
   cat: { w: 0.6, h: 0.7, hp: 10, speed: 0.3, panic: 1.5 },
+  // 26.3: trial-chamber breeze — 30 HP, leaps around combat chambers, throws
+  // wind charges (1 HP + knockback burst) and deflects arrows. Immune to fall
+  // damage (mobs in fablecraft take no fall damage) and sunlight.
+  breeze: { w: 0.6, h: 1.77, hp: 30, speed: 0.3, hostile: true, dmg: 1, drops: [[I.BREEZE_ROD, 1, 2]], xp: 10, skin: 'breeze' },
 };
 
 export class Mob extends Living {
@@ -510,6 +607,150 @@ export class Mob extends Living {
   }
 }
 
+// ---- 26.3 breeze (trial chambers) -----------------------------------------------------------------
+// Leaps toward its target (Java: up to 15 blocks horizontal / 5 vertical per
+// leap; fablecraft's physics gives ~8/2 — documented), hovers otherwise, throws
+// a wind charge every 32 ticks when the target is within 16 blocks with line of
+// sight, and deflects arrows by reversing them back at the shooter.
+export class Breeze extends Mob {
+  // NOTE: signature must match Mob (world, type, x, y, z, opts) — spawnMob
+  // always passes type as the second argument, even for this subclass.
+  constructor(world, type, x, y, z, opts = null) {
+    super(world, type, x, y, z, opts);
+    this.hx = x; this.hz = z; // home (spawner) position for idle drift
+  }
+  // breezes are immune to fall damage (vanilla) — they constantly leap
+  onLand() {}
+  tick(game) {
+    this.game = game;
+    this.baseTick();
+    if (this.deathTime > 0) {
+      if (++this.deathTime > 20) {
+        this.dead = true;
+        this._drop(game);
+        game.particles.smoke(this.x, this.y + this.h / 2, this.z, 12, this.w);
+      }
+      this.moveForward = 0;
+      this.travel(0, 0);
+      return;
+    }
+    const d = this.def, p = game.player, w = this.world;
+    if (this.attackCd > 0) this.attackCd--;
+    if (this.attackAnim > 0) this.attackAnim--;
+    this.moveForward = 0;
+
+    // environment
+    if (this.inLava) this.hurt(4, { type: 'lava' });
+    if (this.fire > 0) {
+      if (this.inWater) this.fire = 0;
+      else {
+        if (this.fire % 20 === 0) this.hurt(1, { type: 'fire' });
+        this.fire--;
+        if (this.age % 3 === 0) game.particles.spawn('p_flame', this.x, this.y + rnd() * this.h, this.z, 0, 0.03, 0, 14, 0.12);
+      }
+    }
+    // breezes do not burn in sunlight (no def.burns) and are immune to fall
+    // damage (fablecraft mobs take none; vanilla breezes likewise).
+    if (this.inWater && this.eyeInFluid(1, this.y + this.eyeHeight())) {
+      if (--this.air <= -20) { this.air = 0; this.hurt(2, { type: 'drown' }); }
+    } else this.air = 300;
+
+    // deflect arrows (all projectiles except wind charges, like vanilla)
+    for (const e of game.entities.list) {
+      if (!(e instanceof Arrow) || e.dead || e.stuck || e.owner === this) continue;
+      if (this.dist2(e.x, e.y, e.z) < 3 * 3) {
+        const sp = Math.max(1.4, Math.hypot(e.vx, e.vy, e.vz) * 0.95);
+        const tgt = e.owner;
+        const dx = tgt ? tgt.x - e.x : -e.vx, dy = tgt ? tgt.y + 0.9 - e.y : -e.vy, dz = tgt ? tgt.z - e.z : -e.vz;
+        const l = Math.hypot(dx, dy, dz) || 1;
+        e.vx = (dx / l) * sp; e.vy = (dy / l) * sp + 0.06; e.vz = (dz / l) * sp;
+        e.owner = this; e.stuck = false;
+        e._aim();
+        game.particles.spawn('p_white', e.x, e.y, e.z, 0, 0.05, 0, 10, 0.15, { bright: true });
+        game.audio.play('pop', e.x, e.y, e.z, 0.4, 1.5);
+        break;
+      }
+    }
+
+    const pd2 = this.dist2(p.x, p.y, p.z);
+    const playerOk = p.alive && p.mode !== 'creative' && !game.peaceful;
+
+    if (playerOk && this.state !== 'chase' && pd2 < 24 * 24 && this._canSee(p)) this.state = 'chase';
+    if (this.state === 'chase' && (!p.alive || pd2 > 40 * 40)) { this.state = 'idle'; this.timer = 40; }
+
+    if (this.state === 'chase' && p.alive) {
+      this._lookAt(p.x, p.y + p.eyeHeight(), p.z);
+      const dist = Math.sqrt(pd2);
+      // leap at the target (breezes cross gaps and climb ledges)
+      if (this.onGround && this.jumpTicks === 0) {
+        const dx = p.x - this.x, dz = p.z - this.z;
+        const l = Math.hypot(dx, dz) || 1;
+        this.vx = (dx / l) * 0.55; this.vz = (dz / l) * 0.55;
+        this.vy = 0.62;
+        this.jumpTicks = 10;
+      } else if (!this.onGround) {
+        // mild air steering
+        const dx = p.x - this.x, dz = p.z - this.z;
+        const l = Math.hypot(dx, dz) || 1;
+        this.vx += (dx / l) * 0.02; this.vz += (dz / l) * 0.02;
+      }
+      // wind charge: 16-block range, 32-tick cooldown, needs line of sight
+      if (playerOk && this.attackCd === 0 && dist < 16 && this._canSee(p)) {
+        this.attackCd = 32;
+        this.attackAnim = 8;
+        const ax = this.x, ay = this.y + this.eyeHeight() - 0.1, az = this.z;
+        let dx = p.x - ax, dy = p.y + p.eyeHeight() * 0.7 - ay, dz = p.z - az;
+        const l = Math.hypot(dx, dy, dz) || 1;
+        const sp = 1.25;
+        game.entities.add(new WindCharge(w, ax, ay, az, (dx / l) * sp, (dy / l) * sp, (dz / l) * sp, this));
+        game.audio.play('bow', this.x, this.y, this.z, 0.7, 0.85 + rnd() * 0.3);
+      }
+      // melee lunge only when right on top of the target (vanilla: contact 1 HP)
+      const reach = this.w / 2 + p.w / 2 + 0.4;
+      if (this.attackCd === 0 && dist < reach && Math.abs(p.y - this.y) < 1.6) {
+        this.attackCd = 20;
+        this.attackAnim = 6;
+        p.hurt(d.dmg * game.difficultyScale, this);
+      }
+    } else {
+      if (this.state === 'chase') { this.state = 'idle'; this.timer = 40; }
+      // idle: drift near the spawner, hop now and then
+      this.timer--;
+      if (this.timer <= 0) {
+        const nx = this.hx + (rnd() * 2 - 1) * 7, nz = this.hz + (rnd() * 2 - 1) * 7;
+        const bx = Math.floor(nx), bz = Math.floor(nz), by = Math.floor(this.y);
+        if (w.isLoaded(bx, bz) && !SOLID[w.getBlock(bx, by, bz)] && !SOLID[w.getBlock(bx, by + 1, bz)]) {
+          this.tx = nx; this.tz = nz;
+        }
+        this.state = rnd() < 0.75 ? 'walk' : 'idle';
+        this.timer = ri(60, 160);
+      }
+      if (this.state === 'walk') {
+        const dx = this.tx - this.x, dz = this.tz - this.z;
+        if (dx * dx + dz * dz < 0.8 || this.timer <= 0) { this.state = 'idle'; this.timer = ri(40, 120); }
+        else {
+          this._moveTo(this.tx, this.tz, 0.5);
+          if (this.onGround && this.jumpTicks === 0 && rnd() < 0.03) { this.vy = 0.4; this.jumpTicks = 10; }
+        }
+      }
+      // glance at the player when close
+      if (pd2 < 36 && this.age % 40 < 12) this._lookAt(p.x, p.y + p.eyeHeight(), p.z, 0.3);
+      else this.headYaw += clamp(wrapAngle(this.yaw - this.headYaw), -0.12, 0.12);
+    }
+
+    const hd = wrapAngle(this.headYaw - this.yaw);
+    if (Math.abs(hd) > 1.3) this.headYaw = this.yaw + clamp(hd, -1.3, 1.3);
+    if (this.inWater || this.inLava) { if (rnd() < 0.8) this.vy += 0.04; }
+    this.travel(0, this.moveForward);
+
+    // ambient sound
+    if (--this.soundTimer <= 0) {
+      this.soundTimer = ri(160, 500);
+      if (pd2 < 24 * 24) game.audio.play('zombie_say', this.x, this.y + this.h / 2, this.z, 0.5, 0.9 + rnd() * 0.3);
+    }
+  }
+}
+
 // ---- manager -------------------------------------------------------------------------------------
 export class EntityManager {
   constructor(game) {
@@ -527,7 +768,8 @@ export class EntityManager {
     this.list.length = 0;
   }
   spawnMob(type, x, y, z, opts = null) {
-    const m = new Mob(this.game.world, type, x, y, z, opts);
+    const C = type === 'breeze' ? Breeze : Mob;
+    const m = new C(this.game.world, type, x, y, z, opts);
     m.game = this.game;
     return this.add(m);
   }
@@ -658,6 +900,13 @@ export class EntityManager {
           m4.rotY(m, m, lerpAngle(e.pyaw, e.yaw, alpha));
           m4.rotX(m, m, -lerp(e.ppitch, e.pitch, alpha));
           m4.scale(m, m, 0.9, 0.9, 0.9);
+          models.draw('arrow', m, {}, lightRGB(raw, r.sun, r.settings.gamma, this.light));
+          break;
+        }
+        case 'wind_charge': {
+          // swirling projectile: fast-spinning small arrow model
+          m4.rotY(m, m, e.age * 1.2);
+          m4.scale(m, m, 0.45, 0.45, 0.45);
           models.draw('arrow', m, {}, lightRGB(raw, r.sun, r.settings.gamma, this.light));
           break;
         }

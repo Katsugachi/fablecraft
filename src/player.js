@@ -2,7 +2,7 @@
 import { Living } from './entity.js';
 import { B, blocks, SH, SHAPE, SOLID, OPAQUE, FLUID, REPLACEABLE, WH, FACING_DX, FACING_DZ, getBoxes, isSapling, isLeaves } from './blocks.js';
 import { I, items, maxStack, getDrops, canHarvest, digSpeed, blockXp } from './items.js';
-import { ItemEntity, Arrow, PrimedTNT } from './mobs.js';
+import { ItemEntity, Arrow, PrimedTNT, WindCharge } from './mobs.js';
 import { clamp } from './math.js';
 
 const PI = Math.PI;
@@ -83,7 +83,7 @@ export class Player extends Living {
     this.bob = 0; this.pbob = 0; this.walkDist = 0; this.pwalkDist = 0;
     this.swing = 0; this.pswing = 0; this.swinging = false; this.swingTicks = 0;
     this.equip = 1; this.pequip = 1; this.equipId = -1;
-    this.breaking = null; this.breakProgress = 0; this.hitDelay = 0; this.useDelay = 0;
+    this.breaking = null; this.breakProgress = 0; this.hitDelay = 0; this.useDelay = 0; this.windCd = 0;
     this.usingItem = 0; this.useKind = null;
     this.stepDist = 0; this.nextStep = 1;
     this.lastW = -100; this.lastSpace = -100; this.wWasDown = false; this.spaceWasDown = false;
@@ -381,6 +381,7 @@ export class Player extends Living {
   }
 
   _swingTick() {
+    if (this.windCd > 0) this.windCd--;
     if (this.swinging) {
       if (++this.swingTicks >= 6) { this.swingTicks = 0; this.swinging = false; }
     } else this.swingTicks = 0;
@@ -450,12 +451,31 @@ export class Player extends Living {
     let dmg = tool && tool.dmg ? tool.dmg : 1;
     const crit = this.fallDist > 0 && !this.onGround && !this.inWater && !this.onLadder();
     if (crit) dmg *= 1.5;
+    // mace smash (vanilla 26.3): hitting right after falling >1.5 blocks adds
+    // fall-scaled damage (+4/block to 3, +2/block to 8, +1/block after) and a
+    // 2.5-block shockwave; the mace itself takes no fall damage from the smash
+    let smashed = false;
+    if (tool && tool.id === I.MACE && this.fallDist > 1.5 && !this.inWater) {
+      const fd = this.fallDist;
+      dmg += Math.min(fd, 3) * 4 + Math.max(0, Math.min(fd, 8) - 3) * 2 + Math.max(0, fd - 8);
+      smashed = true;
+    }
     this.swingArm();
     if (e.hurt(dmg, this)) {
       if (this.sprinting) { e.knockback(this.x, this.z, 0.5); this.sprinting = false; }
+      if (smashed) {
+        for (const o of g.entities.list) {
+          if (o === this || !o.alive) continue;
+          if (this.dist2(o.x, o.y + (o.h || 1) * 0.5, o.z) < 2.5 * 2.5) o.knockback(this.x, this.z, 0.9);
+        }
+        g.audio.play('explode', this.x, this.y + 0.5, this.z, 0.55, 0.5);
+      }
       if (crit) g.particles.crit(e.x, e.y, e.z, e.w, e.h);
       g.audio.play('attack', e.x, e.y + e.h / 2, e.z, 0.7, 0.9 + rnd() * 0.3);
-      if (tool && tool.dur && tool.tool) this._damageTool(tool.tool === 'sword' ? 1 : 2);
+      if (tool && tool.dur) {
+        if (tool.id === I.MACE) this._damageTool(1);
+        else if (tool.tool) this._damageTool(tool.tool === 'sword' ? 1 : 2);
+      }
       this.addExhaustion(0.3);
     }
   }
@@ -637,6 +657,19 @@ export class Player extends Living {
       if (this.creative || this.inv.count(I.ARROW) > 0) { this.usingItem = 1; this.useKind = 'bow'; }
       return;
     }
+    // 26.3: throw a wind charge (vanilla: 0.5s cooldown, +10% burst knockback)
+    if (s.id === I.WIND_CHARGE) {
+      if (fresh && this.windCd <= 0) {
+        this.windCd = 25;
+        const d = this.lookDir();
+        const e = g.entities.add(new WindCharge(w, this.x + d[0] * 0.5, this.y + this.eyeH - 0.1, this.z + d[2] * 0.5, d[0] * 1.25, d[1] * 1.25 + 0.06, d[2] * 1.25, this));
+        e.power = 1.1;
+        g.audio.play('bow', this.x, this.y, this.z, 0.7, 1.1);
+        this._consumeHeld();
+        this.swingArm();
+      }
+      return;
+    }
     if (s.id === I.BUCKET || s.id === I.WATER_BUCKET || s.id === I.LAVA_BUCKET) {
       if (fresh && this._bucket(s)) this.swingArm();
       return;
@@ -669,6 +702,10 @@ export class Player extends Living {
         g.audio.play('door', t.x + 0.5, by + 1, t.z + 0.5, 0.8, m & 4 ? 1 : 0.85);
         return true;
       }
+      case B.VAULT: case B.OMINOUS_VAULT:
+        // 26.3: right-click with a trial key to open; one use per vault.
+        this._useVault(t);
+        return true;
       case B.BED: {
         this.spawn = { x: this.x, y: this.y, z: this.z };
         if (w.dayTime > 12500 && w.dayTime < 23500) {
@@ -680,6 +717,39 @@ export class Player extends Living {
       }
     }
     return false;
+  }
+
+  // Open a 26.3 trial vault with a trial key. Ominous vaults need an ominous
+  // trial key; normal vaults accept either (vanilla behaviour). Loot follows the
+  // 26.3 vanilla table (tridents/trims/enchanted books are out of fablecraft's
+  // item scope — documented). A vault can be opened once per world lifetime.
+  _useVault(t) {
+    const g = this.game, w = this.world;
+    const be = w.getBlockEntity(t.x, t.y, t.z, true);
+    if (!be || be.opened) return;
+    const ominous = t.id === B.OMINOUS_VAULT;
+    const s = this.held();
+    const keyOk = s && (ominous ? s.id === I.OMINOUS_TRIAL_KEY : s.id === I.TRIAL_KEY || s.id === I.OMINOUS_TRIAL_KEY);
+    if (!keyOk) {
+      g.chat('You need a ' + (ominous ? 'ominous trial key' : 'trial key') + ' to open a vault.');
+      return;
+    }
+    this._consumeHeld();
+    be.opened = true;
+    w.setMeta(t.x, t.y, t.z, w.getMeta(t.x, t.y, t.z) | 1);
+    g.audio.play('door', t.x + 0.5, t.y + 0.5, t.z + 0.5, 0.9, 0.6);
+    const r = Math.random;
+    const drops = [];
+    if (r() < 0.25) drops.push([I.WIND_CHARGE, 4 + ((r() * 9) | 0)]); // 25%: 4-12
+    if (r() < 0.085) drops.push([I.DIAMOND, 1 + ((r() * 3) | 0)]); // 8.5%: 1-3
+    if (r() < 0.15) drops.push([I.EMERALD, 1 + ((r() * 3) | 0)]);
+    if (r() < 0.2) drops.push([I.GOLDEN_CARROT, 1 + ((r() * 2) | 0)]);
+    if (ominous) {
+      if (r() < 0.075) drops.push([B.HEAVY_CORE, 1]); // 7.5%
+      if (r() < 0.225) drops.push([I.GOLDEN_APPLE, 1]); // 22.5% (plain: no enchantment table in fablecraft)
+    }
+    if (!drops.length) drops.push([I.WIND_CHARGE, 4 + ((r() * 3) | 0)]);
+    for (const [id, n] of drops) g.dropItem(t.x + 0.5 + (r() - 0.5) * 0.6, t.y + 1.25, t.z + 0.5 + (r() - 0.5) * 0.6, id, n);
   }
 
   _bucket(s) {

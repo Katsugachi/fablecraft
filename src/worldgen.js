@@ -3,7 +3,7 @@
 import { Perlin, hash2, hash3, rand2, mulberry32 } from './noise.js';
 import { B, CH, WH, SEA, OPAQUE } from './blocks.js';
 import { clamp, lerp, smoothstep } from './math.js';
-import { stampVillages, stampCamps } from './structures.js';
+import { stampVillages, stampCamps, stampTrials } from './structures.js';
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, BIRCH_FOREST: 4, TAIGA: 5, SNOWY_TUNDRA: 6,
@@ -391,6 +391,11 @@ export class WorldGen {
       ents = ents.concat(stampCamps(cx, cz, seed, this, blocks, meta));
     } catch (e) {
       // camp failure must not break chunk generation
+    }
+    try {
+      ents = ents.concat(stampTrials(cx, cz, seed, this, blocks, meta));
+    } catch (e) {
+      // trial chamber failure must not break chunk generation
     }
     return { blocks, meta, ents };
   }

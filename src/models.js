@@ -94,6 +94,26 @@ const SKINS = {
     if (part === 'legR') return boxStd('zombie', 0, 16, 4, 12, 4, face, x, y);
     return boxStd('zombie', 0, 16, 4, 12, 4, face, x, y, true);
   },
+  // 26.3 breeze: official 32x32 ghost skin — wide glowing head band (y0-7),
+  // smooth body band (y8-15) with a golden wind-core line, one trailing arm
+  // (0,16,4,12) and two tiny feet (y27-31). Each box face is stretched over
+  // its source band (samplePx clamps to the sheet edge).
+  breeze: (() => {
+    const reg = { head: [8, 0, 16, 8], body: [0, 8, 16, 8], back: [16, 8, 16, 8], arm: [0, 16, 8, 12], foot0: [3, 27, 5, 5], foot1: [15, 27, 5, 5] };
+    const pick = (part, face) => {
+      if (part === 'head') return reg.head;
+      if (part === 'body') return face === 5 ? reg.back : reg.body;
+      if (part === 'armR') return reg.arm;
+      if (part === 'foot0') return reg.foot0;
+      return reg.foot1;
+    };
+    return ({ part, face, x, y, w, h }) => {
+      const [sx, sy, sw, sh] = pick(part, face);
+      const px = sx + Math.min(sw - 1, Math.floor((x / Math.max(1, w)) * sw));
+      const py = sy + Math.min(sh - 1, Math.floor((y / Math.max(1, h)) * sh));
+      return samplePx('breeze', px, py) || 0xff808080;
+    };
+  })(),
   skeleton: ({ part, face, x, y }) => {
     if (part === 'head') return boxStd('skeleton', 0, 0, 8, 8, 8, face, x, y);
     if (part === 'body') return boxStd('skeleton', 16, 16, 8, 12, 4, face, x, y);
@@ -284,6 +304,18 @@ const DEFS = {
   },
   zombie: { skin: 'zombie', parts: bipedParts(4) },
   skeleton: { skin: 'skeleton', parts: bipedParts(2) },
+  // 26.3 breeze: floating wind spirit — wide glowing head, smooth body with a
+  // golden wind-core line, one trailing arm, two tiny feet (official 32x32 skin)
+  breeze: {
+    skin: 'breeze',
+    parts: [
+      { name: 'head', pivot: [0, 0, 0], boxes: [box([-8, 18, -4], [16, 8, 8])] },
+      { name: 'body', pivot: [0, 0, 0], boxes: [box([-8, 10, -4], [16, 8, 8])] },
+      { name: 'armR', pivot: [0, 16, 0], boxes: [box([-12, -12, -2], [4, 12, 4])] },
+      { name: 'foot0', pivot: [0, 0, 0], boxes: [box([-4, 0, -1], [4, 4, 4])] },
+      { name: 'foot1', pivot: [0, 0, 0], boxes: [box([0, 0, -1], [4, 4, 4])] },
+    ],
+  },
   creeper: {
     skin: 'creeper',
     parts: [
@@ -468,7 +500,7 @@ export class Models {
     for (const k in pose) delete pose[k];
     pose.head = [headPitch, headYaw, 0];
     switch (kind) {
-      case 'player': case 'zombie': case 'skeleton': {
+      case 'player': case 'zombie': case 'skeleton': case 'breeze': {
         pose.legR = [a * 1.4 * am, 0, 0];
         pose.legL = [b * 1.4 * am, 0, 0];
         if (kind === 'player') {

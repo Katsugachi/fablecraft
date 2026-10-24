@@ -59,6 +59,15 @@ it('beetroot', 'Beetroot', { food: { hunger: 1, sat: 0.6 } });
 it('beetroot_seeds', 'Beetroot Seeds', { place: B.BEETROOTS });
 // dyes (colour order matches WOOL_COLORS)
 for (const [ck, cn] of WOOL_COLORS) it(ck + '_dye', cn + ' Dye');
+// iteration 4: 26.3 trial chamber materials
+it('emerald', 'Emerald');
+it('copper_ingot', 'Copper Ingot');
+it('golden_carrot', 'Golden Carrot', { food: { hunger: 6, sat: 2.4 } });
+it('breeze_rod', 'Breeze Rod');
+it('wind_charge', 'Wind Charge');
+it('trial_key', 'Trial Key');
+it('ominous_trial_key', 'Ominous Trial Key');
+it('mace', 'Mace', { stack: 1, dmg: 6, dur: 500 });
 
 // ---- tools --------------------------------------------------------------------
 export const TIERS = {
@@ -298,6 +307,25 @@ shaped(B.CUSHION, 1, ['SSS'], { S: B.WOOL_SLAB }, { same: true });
     shaped(B.CONCRETE_SLAB, 6, ['SSS'], { S: B.CONCRETE }, { same: true });
   }
 }
+
+// ---- iteration 4: 26.3 trial chambers + copper recipes (vanilla) ---------------
+// tuff processing
+shaped(B.POLISHED_TUFF, 4, ['TT', 'TT'], { T: B.TUFF });
+shaped(B.TUFF_BRICKS, 4, ['PP', 'PP'], { P: B.POLISHED_TUFF });
+shaped(B.CHISELED_TUFF_BRICKS, 1, ['T', 'T'], { T: B.TUFF_BRICKS });
+shaped(B.CHISELED_TUFF, 1, ['C', 'C'], { C: B.CHISELED_TUFF_BRICKS });
+// copper processing (vanilla 26.3 counts; fablecraft has no oxidation stages,
+// no stonecutter, and no blaze rod — the bulb drops its blaze-rod ingredient)
+shaped(B.COPPER_BLOCK, 1, ['III', 'III', 'III'], { I: I.COPPER_INGOT });
+shaped(B.CUT_COPPER, 4, ['CC', 'CC'], { C: B.COPPER_BLOCK });
+shaped(B.CHISELED_COPPER, 1, ['C', 'C'], { C: B.CUT_COPPER });
+shaped(B.COPPER_GRATE, 4, [' C ', 'C C', ' C '], { C: B.COPPER_BLOCK });
+shapeless(B.COPPER_BULB, 4, [B.COPPER_BLOCK, B.COPPER_BLOCK, B.COPPER_BLOCK, I.REDSTONE]);
+shaped(B.COPPER_DOOR, 3, ['II', 'II', 'II'], { I: I.COPPER_INGOT });
+shaped(B.COPPER_TRAPDOOR, 2, ['II', 'II', 'II'], { I: I.COPPER_INGOT });
+// trial chamber items
+shaped(I.WIND_CHARGE, 4, ['R'], { R: I.BREEZE_ROD });
+shaped(I.MACE, 1, ['C', 'R'], { C: B.HEAVY_CORE, R: I.BREEZE_ROD });
 
 // ---- modern (village-age) recipes -------------------------------------------
 shaped(B.ACACIA_PLANKS, 4, ['L'], { L: B.ACACIA_LOG });
@@ -555,6 +583,9 @@ export function getDrops(id, meta, tool, rand = Math.random) {
     case B.FURNACE_LIT: return one(B.FURNACE);
     case B.DOOR: return meta & 8 ? [] : one(B.DOOR);
     case B.BED: return meta & 4 ? [] : one(B.BED);
+    case B.COPPER_DOOR: return meta & 8 ? [] : one(B.COPPER_DOOR);
+    case B.COPPER_BLOCK: return one(I.COPPER_INGOT, 9); // like other storage blocks in Java
+    case B.TRIAL_SPAWNER: case B.VAULT: case B.OMINOUS_VAULT: return []; // not obtainable, as in Java
   }
   return one(id);
 }
@@ -617,6 +648,9 @@ export const CREATIVE = (() => {
   add(B.LEAF_LITTER, B.RED_SHRUB, B.SHELF_MUSHROOM, B.BIG_SHELF_MUSHROOM);
   add(B.CUSHION, B.STRAW_BED, B.COPPER_CHEST, 280, 281, 282);
   add(B.WOOL_STAIRS, B.WOOL_SLAB, B.CONCRETE, B.CONCRETE_STAIRS, B.CONCRETE_SLAB);
+  add(B.TUFF, B.TUFF_BRICKS, B.CHISELED_TUFF_BRICKS, B.POLISHED_TUFF, B.CHISELED_TUFF);
+  add(B.COPPER_BLOCK, B.CUT_COPPER, B.CHISELED_COPPER, B.OXIDIZED_COPPER, B.OXIDIZED_CUT_COPPER, B.OXIDIZED_CHISELED_COPPER);
+  add(B.COPPER_GRATE, B.COPPER_BULB, B.COPPER_DOOR, B.COPPER_TRAPDOOR, B.HEAVY_CORE);
   for (let i = BMAX; i < nextId; i++) add(i);
   return out;
 })();
