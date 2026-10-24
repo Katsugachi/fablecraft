@@ -15,7 +15,7 @@ const ckey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 export const bkey = (x, y, z) => ((x + 2097152) * 128 + y) * 4194304 + (z + 2097152);
 const DX = [1, -1, 0, 0, 0, 0], DY = [0, 0, 1, -1, 0, 0], DZ = [0, 0, 0, 0, 1, -1];
 const DOWN = 3;
-const HAS_BE = (id) => id === B.CHEST || id === B.FURNACE || id === B.FURNACE_LIT;
+const HAS_BE = (id) => id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED) || id === B.FURNACE || id === B.FURNACE_LIT;
 
 // Background workers come from worker.js, or from an inlined source string in single-file builds.
 let workerUrl = null;
@@ -76,7 +76,7 @@ export class World {
     this.offsets = [];
     this.pcx = 1e9; this.pcz = 1e9;
     this.rand = Math.random;
-    this._pb = new Uint8Array(PSIZE); this._pm = new Uint8Array(PSIZE); this._pl = new Uint8Array(PSIZE);
+    this._pb = new Uint16Array(PSIZE); this._pm = new Uint8Array(PSIZE); this._pl = new Uint8Array(PSIZE);
     this.stats = { meshed: 0, generated: 0 };
     this.frozen = false;
     this._local = false;
@@ -513,7 +513,7 @@ export class World {
             });
           } else w.postMessage({ type: 'gen', cx, cz, gen: this.genId });
         } else if (c.dirty && !c.meshing && d <= (R + 0.5) * (R + 0.5) && this._neighborsLoaded(cx, cz)) {
-          const pb = new Uint8Array(PSIZE), pm = new Uint8Array(PSIZE), pl = new Uint8Array(PSIZE);
+          const pb = new Uint16Array(PSIZE), pm = new Uint8Array(PSIZE), pl = new Uint8Array(PSIZE);
           this._buildPadded(c, pb, pm, pl);
           c.meshing = true;
           if (c.dirty === 2) c.dirty = 1;
@@ -668,7 +668,7 @@ export class World {
     let be = this.blockEntities.get(k);
     if (!be && create) {
       const id = this.getBlock(x, y, z);
-      if (id === B.CHEST) be = { type: 'chest', x, y, z, items: new Array(27).fill(null) };
+      if (id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED)) be = { type: 'chest', x, y, z, items: new Array(27).fill(null) };
       else if (id === B.FURNACE || id === B.FURNACE_LIT) be = { type: 'furnace', x, y, z, items: [null, null, null], burn: 0, burnMax: 0, cook: 0 };
       if (be) this.blockEntities.set(k, be);
     }
@@ -893,7 +893,7 @@ export class World {
           else this.breakNaturally(x, y, z);
         }
         break;
-      case B.SAPLING: case B.BIRCH_SAPLING: case B.SPRUCE_SAPLING: case B.ACACIA_SAPLING: case B.JUNGLE_SAPLING:
+      case B.SAPLING: case B.BIRCH_SAPLING: case B.SPRUCE_SAPLING: case B.ACACIA_SAPLING: case B.JUNGLE_SAPLING: case B.POPLAR_SAPLING:
         if (this.getLight(x, y + 1, z) >= 9 && Math.random() < 0.15) {
           if (!(meta & 8)) this.setMeta(x, y, z, meta | 8, false);
           else this.growTree(x, y, z);
@@ -977,8 +977,9 @@ export class World {
   }
   growTree(x, y, z) {
     const id = this.getBlock(x, y, z);
-    const type = id === B.BIRCH_SAPLING ? 1 : id === B.SPRUCE_SAPLING ? 2 : id === B.ACACIA_SAPLING ? 3 : id === B.JUNGLE_SAPLING ? 4 : 0;
+    const type = id === B.BIRCH_SAPLING ? 1 : id === B.SPRUCE_SAPLING ? 2 : id === B.ACACIA_SAPLING ? 3 : id === B.JUNGLE_SAPLING ? 4 : id === B.POPLAR_SAPLING ? 5 : 0;
     const shape = treeShape(type, Math.random);
+    const leafId = type === 5 ? [B.POPLAR_LEAVES_RED, B.POPLAR_LEAVES_ORANGE, B.POPLAR_LEAVES_YELLOW][(Math.random() * 3) | 0] : TREE_LEAVES[type];
     for (const [dx, dy, dz, k] of shape) {
       if (k !== 0 || dy === 0) continue;
       const b = this.getBlock(x + dx, y + dy, z + dz);
@@ -987,7 +988,7 @@ export class World {
     for (const [dx, dy, dz, k] of shape) {
       const b = this.getBlock(x + dx, y + dy, z + dz);
       if (k === 0) this.setBlock(x + dx, y + dy, z + dz, TREE_LOG[type]);
-      else if (b === 0) this.setBlock(x + dx, y + dy, z + dz, TREE_LEAVES[type]);
+      else if (b === 0) this.setBlock(x + dx, y + dy, z + dz, leafId);
     }
     return true;
   }

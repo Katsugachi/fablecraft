@@ -32,18 +32,19 @@ export const SH = {
   FLOWER_POT: 23, CAMPFIRE: 24, PICKLE: 25, PRESSURE: 26, FURN: 27,
 };
 
-export const blocks = new Array(256).fill(null);
+export const BMAX = 512; // block id space (was 256; extended for 26.3 content)
+export const blocks = new Array(BMAX).fill(null);
 export const B = {};
-export const OPAQUE = new Uint8Array(256); // full cube that hides neighbours
-export const LOPAC = new Uint8Array(256); // light opacity 0..15
-export const LEMIT = new Uint8Array(256); // light emission 0..15
-export const SHAPE = new Uint8Array(256);
-export const SOLID = new Uint8Array(256); // has collision
-export const TRANSL = new Uint8Array(256); // drawn in translucent pass
-export const FLUID = new Uint8Array(256); // 1 water, 2 lava
-export const REPLACEABLE = new Uint8Array(256);
-export const TICKS = new Uint8Array(256); // receives random ticks
-export const LTERM = new Uint8Array(256); // receives light but does not pass it on (slabs, stairs)
+export const OPAQUE = new Uint8Array(BMAX); // full cube that hides neighbours
+export const LOPAC = new Uint8Array(BMAX); // light opacity 0..15
+export const LEMIT = new Uint8Array(BMAX); // light emission 0..15
+export const SHAPE = new Uint8Array(BMAX);
+export const SOLID = new Uint8Array(BMAX); // has collision
+export const TRANSL = new Uint8Array(BMAX); // drawn in translucent pass
+export const FLUID = new Uint8Array(BMAX); // 1 water, 2 lava
+export const REPLACEABLE = new Uint8Array(BMAX);
+export const TICKS = new Uint8Array(BMAX); // receives random ticks
+export const LTERM = new Uint8Array(BMAX); // receives light but does not pass it on (slabs, stairs)
 
 // face order: 0:+X 1:-X 2:+Y 3:-Y 4:+Z 5:-Z
 // facing (meta & 3): 0:+Z(south) 1:-X(west) 2:-Z(north) 3:+X(east)
@@ -57,10 +58,10 @@ function def(id, key, name, o = {}) {
   const faces = new Uint16Array(6);
   if (typeof t === 'string') faces.fill(texId(t));
   else {
-    const side = texId(t.side ?? t.all);
+    const side = texId(t.side ?? t.all ?? t.top ?? t.bottom ?? 'stone');
     faces[0] = faces[1] = faces[4] = faces[5] = side;
-    faces[2] = texId(t.top ?? t.all ?? t.side);
-    faces[3] = texId(t.bottom ?? t.top ?? t.all ?? t.side);
+    faces[2] = texId(t.top ?? t.all ?? t.side ?? 'stone');
+    faces[3] = texId(t.bottom ?? t.top ?? t.all ?? t.side ?? 'stone');
   }
   const nonSolidShape = shape === SH.CROSS || shape === SH.TORCH || shape === SH.FLUID || shape === SH.CROP || shape === SH.FIRE || shape === SH.SNOW ||
     shape === SH.CARPET || shape === SH.CAMPFIRE || shape === SH.PICKLE || shape === SH.PRESSURE || shape === SH.BUTTON || shape === SH.SIGNW || shape === SH.BANNERW;
@@ -274,8 +275,8 @@ B.WOOL = 96;
   def(142, 'barrel', 'Barrel', { shape: SH.FURN, tex: { side: 'barrel_side', top: 'barrel_top', topOpen: 'barrel_top_open', bottom: 'barrel_bottom' }, h: 2, t: AXE, snd: 'wood', flam: 1 });
   def(143, 'bell', 'Bell', { shape: SH.FURN, tex: { side: 'bell_side', top: 'bell_top', bottom: 'bell_bottom' }, h: 5, t: PICK, lv: 1, need: 1, snd: 'metal' });
   def(144, 'blast_furnace', 'Blast Furnace', { shape: SH.FURN, tex: { top: 'blast_furnace_top', side: 'blast_furnace_side', front: 'blast_furnace_front', frontLit: 'blast_furnace_front_on' }, h: 3.5, t: PICK, need: 1, snd: 'stone' });
-  def(145, 'brewing_stand', 'Brewing Stand', { shape: SH.FURN, tex: { stand: 'brewing_stand', base: 'brewing_stand_base' }, cutout: 1, h: 1, t: PICK, snd: 'glass' });
-  def(146, 'cartography_table', 'Cartography Table', { shape: SH.FURN, tex: { top: 'cartography_table_top', front: 'cartography_table_side1', side1: 'cartography_table_side2', side2: 'cartography_table_side3' }, h: 2.5, t: AXE, snd: 'wood', flam: 1 });
+  def(145, 'brewing_stand', 'Brewing Stand', { shape: SH.FURN, tex: { stand: 'brewing_stand', base: 'brewing_stand_base' }, cutout: 1, h: 1, t: PICK, snd: 'glass', flat: 'brewing_stand' });
+  def(146, 'cartography_table', 'Cartography Table', { shape: SH.FURN, tex: { top: 'cartography_table_top', front: 'cartography_table_side1', side1: 'cartography_table_side2', side2: 'cartography_table_side3' }, h: 2.5, t: AXE, snd: 'wood', flam: 1, flat: 'cartography_table_top' });
   def(147, 'composter', 'Composter', { shape: SH.FURN, tex: { side: 'composter_side', top: 'composter_top', compost: 'composter_compost', ready: 'composter_ready', bottom: 'composter_bottom' }, h: 0.6, t: 'shears', snd: 'wood' });
   def(148, 'fletching_table', 'Fletching Table', { shape: SH.FURN, tex: { top: 'fletching_table_top', front: 'fletching_table_front', side: 'fletching_table_side' }, h: 2.5, t: AXE, snd: 'wood', flam: 1 });
   def(149, 'grindstone', 'Grindstone', { shape: SH.FURN, tex: { top: 'grindstone_round', side: 'grindstone_side' }, h: 2, t: PICK, need: 1, snd: 'stone' });
@@ -361,6 +362,71 @@ B.WOOL = 96;
   def(254, 'stained_glass_pane_brown', 'Brown Stained Glass Pane', { shape: SH.CUBE, tex: 'brown_stained_glass_pane', cutout: 1, cullSame: 1, h: 0.3, snd: 'glass' });
   def(255, 'cobweb', 'Cobweb', { tex: 'cobweb', cutout: 1, h: 0, snd: 'cloth', solid: 0, flam: 1 });
 
+  // ---- iteration 3: 26.3 Wilderness Bound wave (256..287) ----------------------
+  // poplar wood family
+  const pLog = def(256, 'poplar_log', 'Poplar Log', { tex: { top: 'poplar_log_top', bottom: 'poplar_log_top', side: 'poplar_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); pLog.log = 1;
+  const pSLog = def(257, 'stripped_poplar_log', 'Stripped Poplar Log', { tex: { top: 'stripped_poplar_log_top', bottom: 'stripped_poplar_log_top', side: 'stripped_poplar_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 }); pSLog.log = 1;
+  const pWood = def(258, 'poplar_wood', 'Poplar Wood', { tex: 'poplar_log', h: 2, t: AXE, snd: 'wood', flam: 1 }); pWood.log = 1;
+  const pSWood = def(259, 'stripped_poplar_wood', 'Stripped Poplar Wood', { tex: 'stripped_poplar_log', h: 2, t: AXE, snd: 'wood', flam: 1 }); pSWood.log = 1;
+  def(260, 'poplar_planks', 'Poplar Planks', { tex: 'poplar_planks', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(261, 'poplar_slab', 'Poplar Slab', slab({ tex: 'poplar_planks', h: 2, t: AXE, snd: 'wood', full: 260, flam: 1 }));
+  def(262, 'poplar_stairs', 'Poplar Stairs', stairs({ tex: 'poplar_planks', h: 2, t: AXE, snd: 'wood', flam: 1 }));
+  def(263, 'poplar_fence', 'Poplar Fence', { shape: SH.FENCE, tex: 'poplar_fence', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(264, 'poplar_fence_gate', 'Poplar Fence Gate', { shape: SH.GATE, tex: 'poplar_fence_gate', cutout: 1, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(265, 'poplar_door', 'Poplar Door', { shape: SH.DOOR, tex: { top: 'poplar_door_top', bottom: 'poplar_door_bottom' }, cutout: 1, h: 0.5, t: AXE, snd: 'wood', flam: 1, flat: 'poplar_door_top' });
+  def(266, 'poplar_trapdoor', 'Poplar Trapdoor', { shape: SH.TRAPDOOR, tex: 'poplar_trapdoor', cutout: 1, h: 3, t: AXE, snd: 'wood', flam: 1 });
+  def(267, 'poplar_pressure_plate', 'Poplar Pressure Plate', { shape: SH.PRESSURE, tex: 'poplar_pressure_plate', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(268, 'poplar_button', 'Poplar Button', { shape: SH.BUTTON, tex: 'poplar_button', cutout: 1, h: 0.1, t: AXE, snd: 'wood', flam: 1 });
+  def(269, 'poplar_sapling', 'Poplar Sapling', plant('poplar_sapling', { ticks: 1, sel: [0.1, 0, 0.1, 0.9, 0.8, 0.9] }));
+  def(270, 'red_poplar_leaves', 'Red Poplar Leaves', { tex: 'red_poplar_leaves', cutout: 1, opac: 1, h: 0.2, t: 'shears', snd: 'grass', tint: 4, color: 0x9c3b12, flam: 1, ticks: 1 });
+  def(271, 'orange_poplar_leaves', 'Orange Poplar Leaves', { tex: 'orange_poplar_leaves', cutout: 1, opac: 1, h: 0.2, t: 'shears', snd: 'grass', tint: 4, color: 0xc25a1a, flam: 1, ticks: 1 });
+  def(272, 'yellow_poplar_leaves', 'Yellow Poplar Leaves', { tex: 'yellow_poplar_leaves', cutout: 1, opac: 1, h: 0.2, t: 'shears', snd: 'grass', tint: 4, color: 0xd9a02b, flam: 1, ticks: 1 });
+
+  // dappled forest plants
+  for (const li of [256, 257, 258, 259]) {
+    const d = blocks[li], s2 = d.faces[0], t2 = d.faces[2];
+    d.logFaces = [null, new Uint16Array([t2, t2, s2, s2, s2, s2]), new Uint16Array([s2, s2, s2, s2, t2, t2])];
+  }
+
+  // dappled forest plants
+  def(273, 'leaf_litter', 'Leaf Litter', plant('leaf_litter', { h: 0.2, snd: 'gravel' }));
+  def(274, 'red_shrub', 'Red Shrub', plant('red_shrub', { h: 0.3 }));
+  def(275, 'shelf_mushroom', 'Shelf Mushroom', plant('shelf_mushroom_0', { h: 0.3, snd: 'wood' }));
+  def(276, 'big_shelf_mushroom', 'Big Shelf Mushroom', plant('shelf_mushroom_1', { h: 0.4, snd: 'wood' }));
+
+  // cushions (16 colours via meta)
+  def(277, 'cushion', 'Cushion', {
+    tex: 'cushion_white', flat: 'cushion_white',
+    metaFaces: (m) => { const c = texId('cushion_' + WOOL_COLORS[m & 15][0]); return new Uint16Array([c, c, c, c, c, c]); },
+    h: 0.4, t: 'shears', snd: 'cloth', flam: 1,
+  });
+  B.CUSHION = 277;
+
+  // straw bed (bed-like, single colour)
+  def(278, 'straw_bed', 'Straw Bed', { shape: SH.BED, tex: { all: 'straw_bed' }, cutout: 1, h: 0.2, snd: 'cloth', flat: 'straw_bed' });
+
+  // copper chests (4 oxidation states; chest behaviour)
+  def(279, 'copper_chest', 'Copper Chest', { shape: SH.CHEST, tex: { top: 'copper_chest_side', side: 'copper_chest_side', front: 'copper_chest_left' }, h: 2.5, t: AXE, snd: 'metal' });
+  def(280, 'copper_chest_exposed', 'Exposed Copper Chest', { shape: SH.CHEST, tex: { top: 'copper_chest_exposed_side', side: 'copper_chest_exposed_side', front: 'copper_chest_exposed_left' }, h: 2.5, t: AXE, snd: 'metal' });
+  def(281, 'copper_chest_weathered', 'Weathered Copper Chest', { shape: SH.CHEST, tex: { top: 'copper_chest_weathered_side', side: 'copper_chest_weathered_side', front: 'copper_chest_weathered_left' }, h: 2.5, t: AXE, snd: 'metal' });
+  def(282, 'copper_chest_oxidized', 'Oxidized Copper Chest', { shape: SH.CHEST, tex: { top: 'copper_chest_oxidized_side', side: 'copper_chest_oxidized_side', front: 'copper_chest_oxidized_left' }, h: 2.5, t: AXE, snd: 'metal' });
+  B.COPPER_CHEST = 279; B.COPPER_CHEST_EXPOSED = 280; B.COPPER_CHEST_WEATHERED = 281; B.COPPER_CHEST_OXIDIZED = 282;
+
+  // coloured stairs/slabs: one id per family, colour in meta (colour<<3|dir|up, colour<<1|half)
+  def(283, 'wool_stairs', 'Wool Stairs', stairs({ tex: 'wool_0', flat: 'wool_0', metaFaces: (m) => { const c = texId('wool_' + (m >> 3 & 15)); return new Uint16Array([c, c, c, c, c, c]); }, h: 0.8, t: 'shears', snd: 'cloth', flam: 1 }));
+  def(284, 'wool_slab', 'Wool Slab', slab({ tex: 'wool_0', flat: 'wool_0', noCombine: 1, metaFaces: (m) => { const c = texId('wool_' + (m >> 1 & 15)); return new Uint16Array([c, c, c, c, c, c]); }, h: 0.8, t: 'shears', snd: 'cloth', flam: 1 }));
+  def(285, 'concrete', 'Concrete', { tex: 'concrete_white', flat: 'concrete_white', metaFaces: (m) => { const c = texId('concrete_' + WOOL_COLORS[m & 15][0]); return new Uint16Array([c, c, c, c, c, c]); }, h: 1.5, t: SHOVEL, snd: 'gravel', resist: 30 });
+  def(286, 'concrete_stairs', 'Concrete Stairs', stairs({ tex: 'concrete_white', flat: 'concrete_white', metaFaces: (m) => { const c = texId('concrete_' + WOOL_COLORS[m >> 3 & 15][0]); return new Uint16Array([c, c, c, c, c, c]); }, h: 1.5, t: SHOVEL, snd: 'gravel' }));
+  def(287, 'concrete_slab', 'Concrete Slab', slab({ tex: 'concrete_white', flat: 'concrete_white', noCombine: 1, metaFaces: (m) => { const c = texId('concrete_' + WOOL_COLORS[m >> 1 & 15][0]); return new Uint16Array([c, c, c, c, c, c]); }, h: 1.5, t: SHOVEL, snd: 'gravel' }));
+  B.WOOL_STAIRS = 283; B.WOOL_SLAB = 284; B.CONCRETE = 285; B.CONCRETE_STAIRS = 286; B.CONCRETE_SLAB = 287;
+  B.POPLAR_LOG = 256; B.STRIPPED_POPLAR_LOG = 257; B.POPLAR_WOOD = 258; B.STRIPPED_POPLAR_WOOD = 259; B.POPLAR_PLANKS = 260;
+  B.POPLAR_SLAB = 261; B.POPLAR_STAIRS = 262; B.POPLAR_FENCE = 263; B.POPLAR_FENCE_GATE = 264; B.POPLAR_DOOR = 265; B.POPLAR_TRAPDOOR = 266;
+  B.POPLAR_PRESSURE_PLATE = 267; B.POPLAR_BUTTON = 268; B.POPLAR_SAPLING = 269; B.POPLAR_LEAVES_RED = 270; B.POPLAR_LEAVES_ORANGE = 271; B.POPLAR_LEAVES_YELLOW = 272;
+  B.LEAF_LITTER = 273; B.RED_SHRUB = 274; B.SHELF_MUSHROOM = 275; B.BIG_SHELF_MUSHROOM = 276; B.CUSHION = 277; B.STRAW_BED = 278;
+
+  // ---- iteration 3 texture id pre-registration ---------------------------------
+  for (let i = 0; i < 16; i++) { texId('wool_' + i); texId('cushion_' + WOOL_COLORS[i][0]); texId('concrete_' + WOOL_COLORS[i][0]); }
+
   // flat 2D icons for thin blocks (3D icons would be nearly invisible)
   const flatIcon = (id, name) => { const d = blocks[id]; if (d) d.flat = name; };
   flatIcon(116, 'sea_pickle');
@@ -372,6 +438,7 @@ B.WOOL = 96;
   [160, 161, 162, 163].forEach((id, i) => flatIcon(id, ['oak_pressure_plate', 'spruce_pressure_plate', 'acacia_pressure_plate', 'jungle_pressure_plate'][i]));
   [164, 165, 166, 167].forEach((id, i) => flatIcon(id, ['oak_trapdoor', 'spruce_trapdoor', 'acacia_trapdoor', 'jungle_trapdoor'][i]));
   [168, 169, 170, 171, 172].forEach((id, i) => flatIcon(id, ['jungle_button', 'button_stone', 'oak_button', 'spruce_button', 'acacia_button'][i]));
+  flatIcon(264, 'poplar_fence_gate'); flatIcon(267, 'poplar_pressure_plate'); flatIcon(266, 'poplar_trapdoor'); flatIcon(268, 'poplar_button');
 }
 export const TERRACOTTA_COLORS = new Array(16);
 export const CARPETS = new Array(16);
@@ -386,11 +453,12 @@ export const WOOL_RGB = WOOL_COLORS.map(([, , c]) => c);
 for (let i = 0; i < 10; i++) texId('crack_' + i);
 ['p_smoke', 'p_flame', 'p_bubble', 'p_splash', 'p_crit', 'p_heart', 'p_note', 'p_white', 'p_explode', 'p_lava'].forEach(texId);
 
-export const isLeaves = (id) => id === 16 || id === 55 || id === 58 || id === 176 || id === 247;
-export const isLog = (id) => id === 15 || id === 54 || id === 57 || id === 173 || id === 244;
-export const isSapling = (id) => id === 6 || id === 71 || id === 72 || id === 177 || id === 248;
+export const isLeaves = (id) => id === 16 || id === 55 || id === 58 || id === 176 || id === 247 || id === 270 || id === 271 || id === 272;
+export const isLog = (id) => id === 15 || id === 54 || id === 57 || id === 173 || id === 244 || (id >= 256 && id <= 259);
+export const isSapling = (id) => id === 6 || id === 71 || id === 72 || id === 177 || id === 248 || id === 269;
 export const isFlower = (id) => id === 22 || id === 23 || (id >= 73 && id <= 75);
 export const isWool = (id) => id >= 96 && id < 112;
+export const COLOR_BLOCKS = new Set([277, 283, 284, 285, 286, 287]); // colour chosen via item dmg meta
 
 // ---- collision / selection boxes ---------------------------------------------
 const FULL = [[0, 0, 0, 1, 1, 1]];

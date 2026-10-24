@@ -1,6 +1,6 @@
 // Initial (chunk-local) lighting. Cross-chunk stitching happens on the main thread.
 // light byte = sky << 4 | block
-import { LOPAC, LEMIT, LTERM, WH } from './blocks.js';
+import { BMAX, LOPAC, LEMIT, LTERM, WH } from './blocks.js';
 
 const q = new Int32Array(1 << 18);
 const QM = q.length - 1;
@@ -37,7 +37,7 @@ export function initLight(blocks, light) {
   light.fill(0);
   let maxTop = 0;
   // sky columns
-  for (let c = 0; c < 256; c++) {
+  for (let c = 0; c < BMAX; c++) {
     const base = c << 7;
     let lvl = 15;
     for (let y = WH - 1; y >= 0; y--) {
@@ -56,7 +56,7 @@ export function initLight(blocks, light) {
   // seed horizontal spread: lit cells next to darker, non-opaque cells
   let tail = 0;
   const top = Math.min(WH - 1, maxTop + 1);
-  for (let c = 0; c < 256; c++) {
+  for (let c = 0; c < BMAX; c++) {
     const base = c << 7, x = c >> 4, z = c & 15;
     for (let y = 0; y <= top; y++) {
       const i = base + y, L = light[i] >> 4;

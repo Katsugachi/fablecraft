@@ -657,6 +657,7 @@ export class Player extends Living {
       case B.CRAFTING_TABLE: g.ui.openContainer('crafting'); return true;
       case B.FURNACE: case B.FURNACE_LIT: g.ui.openContainer('furnace', w.getBlockEntity(t.x, t.y, t.z, true)); return true;
       case B.CHEST:
+      case B.COPPER_CHEST: case B.COPPER_CHEST_EXPOSED: case B.COPPER_CHEST_WEATHERED: case B.COPPER_CHEST_OXIDIZED:
         g.audio.play('chest', t.x + 0.5, t.y + 0.5, t.z + 0.5, 0.7);
         g.ui.openContainer('chest', w.getBlockEntity(t.x, t.y, t.z, true));
         return true;
@@ -774,12 +775,13 @@ export class Player extends Living {
   _place(t, s, id) {
     const g = this.game, w = this.world;
     const d = blocks[id];
+    const color = s && s.dmg ? (s.dmg & 15) : 0; // item colour meta (cycled via right-click in inventory)
     let x = t.x, y = t.y, z = t.z;
     const fy = t.hy - t.y; // hit height within the block
     const dir = this.facing();
     let meta = 0;
     // slabs combine into full blocks
-    if (d.shape === SH.SLAB && t.id === id) {
+    if (d.shape === SH.SLAB && !d.noCombine && t.id === id) {
       const tm = t.meta & 1;
       if ((tm === 0 && t.ny === 1) || (tm === 1 && t.ny === -1)) {
         if (this._blocked(x, y, z, d.full, 0)) return false;
@@ -790,7 +792,7 @@ export class Player extends Living {
     if (!REPLACEABLE[t.id] || t.id === id) { x += t.nx; y += t.ny; z += t.nz; }
     if (y < 0 || y >= WH) return false;
     const at = w.getBlock(x, y, z);
-    if (d.shape === SH.SLAB && at === id) {
+    if (d.shape === SH.SLAB && !d.noCombine && at === id) {
       // filling the other half of a slab already in that cell
       if (this._blocked(x, y, z, d.full, 0)) return false;
       w.setBlock(x, y, z, d.full, 0);
@@ -799,8 +801,8 @@ export class Player extends Living {
     if (!REPLACEABLE[at]) return false;
     const upper = t.ny === -1 || (t.ny === 0 && fy > 0.5);
     switch (d.shape) {
-      case SH.SLAB: meta = upper ? 1 : 0; break;
-      case SH.STAIRS: meta = dir | (upper ? 4 : 0); break;
+      case SH.SLAB: meta = (id === B.WOOL_SLAB || id === B.CONCRETE_SLAB) ? ((color << 1) | (upper ? 1 : 0)) : (upper ? 1 : 0); break;
+      case SH.STAIRS: meta = (id === B.WOOL_STAIRS || id === B.CONCRETE_STAIRS) ? ((color << 3) | dir | (upper ? 4 : 0)) : (dir | (upper ? 4 : 0)); break;
       case SH.TORCH:
         if (t.ny === 1) meta = 0;
         else if (t.ny === 0) { for (let f = 0; f < 4; f++) if (FACING_DX[f] === t.nx && FACING_DZ[f] === t.nz) meta = 1 + f; }
@@ -848,6 +850,7 @@ export class Player extends Living {
       default:
         if (d.front >= 0) meta = (dir + 2) & 3;
         if (isLeaves(id)) meta = 1;
+        if (id === B.CUSHION || id === B.CONCRETE) meta = color;
     }
     if (this._blocked(x, y, z, id, meta)) return false;
     w.setBlock(x, y, z, id, meta);

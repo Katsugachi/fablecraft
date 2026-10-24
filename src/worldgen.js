@@ -3,13 +3,13 @@
 import { Perlin, hash2, hash3, rand2, mulberry32 } from './noise.js';
 import { B, CH, WH, SEA, OPAQUE } from './blocks.js';
 import { clamp, lerp, smoothstep } from './math.js';
-import { stampVillages } from './structures.js';
+import { stampVillages, stampCamps } from './structures.js';
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, BIRCH_FOREST: 4, TAIGA: 5, SNOWY_TUNDRA: 6,
-  SNOWY_TAIGA: 7, DESERT: 8, SAVANNA: 9, SWAMP: 10, MOUNTAINS: 11, RIVER: 12, MEADOW: 13,
+  SNOWY_TAIGA: 7, DESERT: 8, SAVANNA: 9, SWAMP: 10, MOUNTAINS: 11, RIVER: 12, MEADOW: 13, DAPPLED_FOREST: 14,
 };
-export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Snowy Taiga', 'Desert', 'Savanna', 'Swamp', 'Mountains', 'River', 'Meadow'];
+export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Snowy Taiga', 'Desert', 'Savanna', 'Swamp', 'Mountains', 'River', 'Meadow', 'Dappled Forest'];
 
 const mixc = (a, b, t) => {
   const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
@@ -56,6 +56,19 @@ export class Climate {
 // Tree shapes as lists of [dx,dy,dz,kind] (kind 0 = log, 1 = leaves). type: 0 oak, 1 birch, 2 spruce.
 export function treeShape(type, rnd) {
   const out = [];
+  if (type === 5) {
+    // poplar (26.3): tall, slender trunk; narrow crown of one leaf colour per tree
+    const h = 5 + ((rnd() * 4) | 0);
+    for (let yy = h - 3; yy <= h; yy++) {
+      const rad = yy >= h - 1 ? 1 : 2;
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        if (Math.abs(dx) === rad && Math.abs(dz) === rad && (yy === h || rnd() < 0.6)) continue;
+        out.push([dx, yy, dz, 1]);
+      }
+    }
+    for (let y = 0; y < h; y++) out.push([0, y, 0, 0]);
+    return out;
+  }
   if (type === 2) {
     const h = 6 + ((rnd() * 4) | 0), bare = 1 + ((rnd() * 2) | 0), maxR = 2 + ((rnd() * 2) | 0);
     let rad = (rnd() * 2) | 0, curMax = 1, reset = 0;
@@ -84,12 +97,13 @@ export function treeShape(type, rnd) {
   }
   return out;
 }
-export const TREE_LOG = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.ACACIA_LOG, B.JUNGLE_LOG];
-export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.ACACIA_LEAVES, B.JUNGLE_LEAVES];
+export const TREE_LOG = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.ACACIA_LOG, B.JUNGLE_LOG, B.POPLAR_LOG];
+export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.ACACIA_LEAVES, B.JUNGLE_LEAVES, B.POPLAR_LEAVES_RED];
+export const POPLAR_LEAF_IDS = [B.POPLAR_LEAVES_RED, B.POPLAR_LEAVES_ORANGE, B.POPLAR_LEAVES_YELLOW];
 
 const PAD = 5;
 const PW = CH + PAD * 2;
-const TREE_DENSITY = [0, 0, 0.004, 0.075, 0.07, 0.07, 0.003, 0.055, 0, 0.006, 0.04, 0.012, 0, 0];
+const TREE_DENSITY = [0, 0, 0.004, 0.075, 0.07, 0.07, 0.003, 0.055, 0, 0.006, 0.04, 0.012, 0, 0, 0.05];
 
 export class WorldGen {
   constructor(seed) {
@@ -149,6 +163,7 @@ export class WorldGen {
     else if (h <= SEA + 1 && land < 0.75 && sw < 0.3) biome = BIOME.BEACH;
     else if (t < 0.22) biome = hu > 0.5 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_TUNDRA;
     else if (t < 0.38) biome = hu > 0.38 ? BIOME.TAIGA : BIOME.PLAINS;
+    else if (t < 0.55 && hu > 0.42 && hu < 0.62 && this.misc.noise2(x / 170 + 55, z / 170 - 23) > 0.25) biome = BIOME.DAPPLED_FOREST;
     else if (t > 0.68) biome = hu < 0.44 ? BIOME.DESERT : hu < 0.62 ? BIOME.SAVANNA : BIOME.FOREST;
     else if (hu < 0.36) biome = (this.misc.noise2(x / 150 + 31, z / 150 - 7) > 0.18 && hu > 0.2) ? BIOME.MEADOW : BIOME.PLAINS;
     else if (hu < 0.58) biome = BIOME.FOREST;
@@ -194,6 +209,7 @@ export class WorldGen {
       case BIOME.FOREST: return (hash2(x, z, s + 1) & 7) < 2 ? 2 : 1;
       case BIOME.BIRCH_FOREST: return 2;
       case BIOME.TAIGA: case BIOME.SNOWY_TAIGA: case BIOME.SNOWY_TUNDRA: return 3;
+      case BIOME.DAPPLED_FOREST: return (hash2(x, z, s + 1) & 3) < 3 ? 6 : 3;
       case BIOME.MOUNTAINS: return h < 92 ? 3 : 0;
       case BIOME.DESERT: return 4;
       default: return 1;
@@ -201,7 +217,7 @@ export class WorldGen {
   }
 
   generate(cx, cz) {
-    const blocks = new Uint8Array(CH * CH * WH);
+    const blocks = new Uint16Array(CH * CH * WH); // 512-block id space
     const meta = new Uint8Array(CH * CH * WH);
     const { pH, pB, seed } = this;
     const x0 = cx * CH, z0 = cz * CH;
@@ -300,12 +316,13 @@ export class WorldGen {
       }
       const type = kind - 1;
       const shape = treeShape(type, tr);
+      const leafId = type === 5 ? POPLAR_LEAF_IDS[(tr() * 3) | 0] : TREE_LEAVES[type];
       for (const [dx, dy, dz, k] of shape) {
         const x = tx + dx, z = tz + dz, y = h + 1 + dy;
         if (x < 0 || x >= CH || z < 0 || z >= CH || y >= WH) continue;
         const i = (x << 11) | (z << 7) | y;
         if (k === 0) blocks[i] = TREE_LOG[type];
-        else if (blocks[i] === B.AIR) blocks[i] = TREE_LEAVES[type];
+        else if (blocks[i] === B.AIR) blocks[i] = leafId;
       }
     }
 
@@ -329,6 +346,7 @@ export class WorldGen {
             case BIOME.SAVANNA: grass = 0.42; break;
             case BIOME.SWAMP: grass = 0.22; shroom = 0.012; break;
             case BIOME.MOUNTAINS: grass = 0.06; break;
+            case BIOME.DAPPLED_FOREST: grass = 0.05; shroom = 0.004; break;
           }
           if (u < grass) blocks[col + h + 1] = B.TALL_GRASS;
           else if (u < grass + flowers) {
@@ -338,6 +356,11 @@ export class WorldGen {
           else if (u > 0.9992) { blocks[col + h + 1] = B.PUMPKIN; meta[col + h + 1] = (u2 * 4) | 0; }
         } else if (ground === B.SAND && biome === BIOME.DESERT) {
           if (u < 0.012) blocks[col + h + 1] = B.DEAD_BUSH;
+        }
+        if (biome === BIOME.DAPPLED_FOREST) {
+          if (u < 0.06) blocks[col + h + 1] = B.LEAF_LITTER;
+          else if (u < 0.075) blocks[col + h + 1] = B.RED_SHRUB;
+          else if (u > 0.995) blocks[col + h + 1] = u2 < 0.3 ? B.BIG_SHELF_MUSHROOM : B.SHELF_MUSHROOM;
         }
         // sugar cane on the waterline
         if (h === SEA && (ground === B.GRASS || ground === B.SAND || ground === B.DIRT) && blocks[col + h + 1] === B.AIR) {
@@ -363,6 +386,11 @@ export class WorldGen {
       ents = stampVillages(cx, cz, seed, this, blocks, meta);
     } catch (e) {
       ents = [];
+    }
+    try {
+      ents = ents.concat(stampCamps(cx, cz, seed, this, blocks, meta));
+    } catch (e) {
+      // camp failure must not break chunk generation
     }
     return { blocks, meta, ents };
   }

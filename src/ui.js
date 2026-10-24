@@ -931,8 +931,8 @@ export class UI {
   }
   _updateResult() {
     if (!this.craftW) return;
-    const r = matchRecipe(this.craft.map((s) => (s ? s.id : 0)), this.craftW);
-    this.result[0] = r ? { id: r.id, count: r.count, dmg: 0 } : null;
+    const r = matchRecipe(this.craft.map((s) => (s ? s.id : 0)), this.craftW, this.craft.map((s) => (s ? s.dmg : 0)));
+    this.result[0] = r ? { id: r.id, count: r.count, dmg: r.meta || 0 } : null;
   }
   _consumeCraft() {
     for (let i = 0; i < this.craft.length; i++) {
@@ -1101,6 +1101,11 @@ export class UI {
       return;
     }
     if (button !== 0 && button !== 2) return;
+    if (button === 2 && !this.cursor && !shift) {
+      const st = this._stackAt(s);
+      const it2 = st && items[st.id];
+      if (it2 && it2.cyc) { st.dmg = ((st.dmg || 0) + 1) % 16; this.refresh(); return; }
+    }
     if (shift) {
       this._click(s, button, true);
       this.shiftDrag = { button, last: s };

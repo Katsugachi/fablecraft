@@ -1,6 +1,6 @@
 // WebGL2 renderer: terrain, sky, clouds, entities, particles, overlays and the first-person hand.
 import { m4, Frustum, clamp, lerp } from './math.js';
-import { TEX, texId, ANIM_FRAMES, B, blocks, SHAPE, SH, WH, getBoxes } from './blocks.js';
+import { TEX, texId, ANIM_FRAMES, B, blocks, SHAPE, SH, WH, getBoxes, BMAX } from './blocks.js';
 import { buildArrayData, getTex, sunImage, moonImage } from './textures.js';
 import { meshSingle, FACE_SHADE } from './mesher.js';
 import { items } from './items.js';
@@ -749,7 +749,7 @@ export class Renderer {
       this._drawModel(mesh, model, [1, 1, 1, 1], lightRGB(lightRaw, this.sun, this.settings.gamma, this._light));
       gl.enable(gl.CULL_FACE);
       if (vp !== this.vp) gl.uniformMatrix4fv(this.modelProg.u.u_vp, false, this.vp);
-    } else if (id < 256 && blocks[id]) {
+    } else if (id < BMAX && blocks[id]) {
       this.drawBlock(id, 0, model, lightRaw, 0, vp, vp !== this.vp ? 0 : null);
     }
   }

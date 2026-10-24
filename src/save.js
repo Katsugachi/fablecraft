@@ -1,6 +1,7 @@
 // World persistence in IndexedDB: world metadata + run-length-encoded modified chunks.
 const DB_NAME = 'fablecraft', DB_VER = 1;
 
+// RLE over raw bytes (block values are 2-byte little-endian in a Uint16Array).
 function rle(a) {
   const out = [];
   let i = 0;
@@ -13,12 +14,20 @@ function rle(a) {
   }
   return new Uint8Array(out);
 }
-function unrle(a, size) {
-  const out = new Uint8Array(size);
+function unrle(a, bytes, u16) {
+  const out = u16 ? new Uint16Array(new ArrayBuffer(bytes)) : new Uint8Array(bytes);
   let o = 0;
-  for (let i = 0; i < a.length; i += 2) {
-    out.fill(a[i + 1], o, o + a[i]);
-    o += a[i];
+  if (u16) {
+    const u8 = new Uint8Array(out.buffer);
+    for (let i = 0; i < a.length; i += 2) {
+      u8.fill(a[i + 1], o * 2, o * 2 + a[i] * 2);
+      o += a[i];
+    }
+  } else {
+    for (let i = 0; i < a.length; i += 2) {
+      out.fill(a[i + 1], o, o + a[i]);
+      o += a[i];
+    }
   }
   return out;
 }
@@ -81,11 +90,11 @@ export class Save {
       rec = await req(db.transaction('chunks').objectStore('chunks').get(k));
     }
     if (!rec) return null;
-    return { blocks: unrle(rec.b, size), meta: unrle(rec.m, size) };
+    return { blocks: unrle(rec.b, size * 2, true), meta: unrle(rec.m, size, false) };
   }
   putChunk(id, cx, cz, blocks, meta) {
     const k = `${id}:${cx},${cz}`;
-    const rec = { b: rle(blocks), m: rle(meta) };
+    const rec = { b: rle(new Uint8Array(blocks.buffer)), m: rle(new Uint8Array(meta.buffer)) };
     this.pending.set(k, rec);
     this.open().then((db) => {
       if (!db) return;

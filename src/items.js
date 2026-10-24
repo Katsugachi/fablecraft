@@ -1,10 +1,10 @@
 // Item registry, tool/food/armor stats, crafting & smelting recipes, block drops.
-import { B, blocks, SH, WOOL_COLORS, isLeaves } from './blocks.js';
+import { B, blocks, SH, WOOL_COLORS, isLeaves, BMAX, COLOR_BLOCKS } from './blocks.js';
 
 export const items = new Array(512).fill(null);
 export const I = {};
 export const itemByKey = new Map();
-let nextId = 256;
+let nextId = BMAX;
 
 function it(key, name, o = {}) {
   const id = nextId++;
@@ -22,6 +22,8 @@ for (const b of blocks) {
   itemByKey.set(b.key, b.id);
 }
 items[B.BED].stack = 1;
+// colour-cycling block items (right-click in inventory to cycle dye colour)
+for (const [key, b] of Object.entries(blocks)) { if (b && COLOR_BLOCKS.has(b.id)) items[b.id].cyc = true; }
 
 // ---- materials ----------------------------------------------------------------
 it('stick', 'Stick', { fuel: 100 });
@@ -134,7 +136,7 @@ FUEL[B.SIGN] = 300; FUEL[B.BANNER] = 100; FUEL[B.HAY_BLOCK] = 100; FUEL[B.LECTER
 FUEL[B.ACACIA_WOOD] = 300; FUEL[B.SPRUCE_WOOD] = 300; FUEL[B.STRIPPED_OAK_LOG] = 300; FUEL[B.STRIPPED_OAK_WOOD] = 300;
 FUEL[B.STRIPPED_SPRUCE_LOG] = 300; FUEL[B.STRIPPED_SPRUCE_WOOD] = 300; FUEL[B.STRIPPED_ACACIA_LOG] = 300;
 FUEL[B.JUNGLE_WOOD] = 300;
-export const fuelTime = (id) => (id < 256 ? FUEL[id] || 0 : items[id]?.fuel || 0);
+export const fuelTime = (id) => (id < BMAX ? FUEL[id] || 0 : items[id]?.fuel || 0);
 
 // ---- smelting -------------------------------------------------------------------
 export const SMELT = new Map([
@@ -157,13 +159,13 @@ const G = {
 };
 export const recipes = [];
 const norm = (x) => (typeof x === 'string' ? G[x.slice(1)] : x);
-function shaped(out, count, pattern, key) {
+function shaped(out, count, pattern, key, meta) {
   const h = pattern.length, w = pattern[0].length, grid = [];
   for (const row of pattern) for (const ch of row) grid.push(ch === ' ' ? 0 : norm(key[ch]));
-  recipes.push({ w, h, grid, out, count });
+  recipes.push({ w, h, grid, out, count, outMeta: meta && meta.out, sameColor: !!(meta && meta.same) });
 }
-function shapeless(out, count, list) {
-  recipes.push({ shapeless: list.map(norm), out, count });
+function shapeless(out, count, list, meta) {
+  recipes.push({ shapeless: list.map(norm), out, count, outMeta: meta && meta.out, sameColor: !!(meta && meta.same) });
 }
 const P = '#planks';
 
@@ -247,6 +249,55 @@ blockOf(B.DIAMOND_BLOCK, I.DIAMOND);
 blockOf(B.COAL_BLOCK, I.COAL);
 blockOf(B.LAPIS_BLOCK, I.LAPIS);
 blockOf(B.REDSTONE_BLOCK, I.REDSTONE);
+
+// ---- iteration 3: 26.3 Wilderness Bound recipes ------------------------------
+// poplar wood family
+shaped(B.POPLAR_PLANKS, 4, ['L'], { L: B.POPLAR_LOG });
+shaped(B.POPLAR_PLANKS, 4, ['L'], { L: B.POPLAR_WOOD });
+shaped(B.POPLAR_PLANKS, 4, ['L'], { L: B.STRIPPED_POPLAR_LOG });
+shaped(B.POPLAR_PLANKS, 4, ['L'], { L: B.STRIPPED_POPLAR_WOOD });
+shaped(B.POPLAR_LOG, 4, ['LL', 'LL'], { L: B.POPLAR_WOOD }); // wood <-> log recombination follows house style
+shaped(B.POPLAR_WOOD, 4, ['LL', 'LL'], { L: B.POPLAR_LOG });
+shaped(B.POPLAR_SLAB, 6, ['SSS'], { S: B.POPLAR_PLANKS });
+shaped(B.POPLAR_STAIRS, 4, ['M  ', 'MM ', 'MMM'], { M: B.POPLAR_PLANKS });
+shaped(B.POPLAR_FENCE, 3, ['PSP', 'PSP'], { P: B.POPLAR_PLANKS, S: I.STICK });
+shaped(B.POPLAR_FENCE_GATE, 1, ['P P', 'PSP', 'P P'], { P: B.POPLAR_PLANKS, S: I.STICK }); // 6 planks + 2 sticks
+shaped(B.POPLAR_DOOR, 3, ['PP', 'PP', 'PP'], { P: B.POPLAR_PLANKS });
+shaped(B.POPLAR_TRAPDOOR, 2, ['PP', 'PP'], { P: B.POPLAR_PLANKS });
+shaped(B.POPLAR_PRESSURE_PLATE, 1, ['PP'], { P: B.POPLAR_PLANKS });
+shaped(B.POPLAR_BUTTON, 1, ['P'], { P: B.POPLAR_PLANKS });
+// straw bed: 3 hay bales in a row -> 4 (vanilla 26.3)
+shaped(B.STRAW_BED, 4, ['HHH'], { H: B.HAY_BLOCK });
+items[B.STRAW_BED].stack = 16;
+// wool stairs/slabs: 3 wool of one colour -> 6 (colour preserved, vanilla 26.3)
+{
+  const WID = [96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111];
+  for (let c = 0; c < 16; c++) {
+    shaped(B.WOOL_SLAB, 6, ['SSS'], { S: WID[c] }, { out: c });
+    shaped(B.WOOL_STAIRS, 4, ['M  ', 'MM ', 'MMM'], { M: WID[c] }, { out: c });
+  }
+}
+// cushion: 3 wool slabs of the same colour -> 1 (vanilla 26.3)
+shaped(B.CUSHION, 1, ['SSS'], { S: B.WOOL_SLAB }, { same: true });
+// concrete: 4 sand + 1 dye of the colour -> 1 concrete (vanilla 26.3 uses cement)
+{
+  const DYED = {
+    white: I.WHITE_DYE, orange: I.ORANGE_DYE, magenta: I.MAGENTA_DYE, light_blue: I.LIGHT_BLUE_DYE,
+    yellow: I.YELLOW_DYE, lime: I.LIME_DYE, pink: I.PINK_DYE, gray: I.GRAY_DYE, light_gray: I.LIGHT_GRAY_DYE,
+    cyan: I.CYAN_DYE, purple: I.PURPLE_DYE, blue: I.BLUE_DYE, brown: I.BROWN_DYE, green: I.GREEN_DYE,
+    red: I.RED_DYE, black: I.BLACK_DYE,
+  };
+  for (const [k, c] of WOOL_COLORS.entries()) {
+    shapeless(B.CONCRETE, 1, [B.SAND, B.SAND, B.SAND, B.SAND, DYED[k]], { out: c });
+  }
+}
+// concrete stairs/slab: 6 concrete of one colour -> 4 stairs / 6 slabs (colour preserved)
+{
+  for (let c = 0; c < 16; c++) {
+    shaped(B.CONCRETE_STAIRS, 4, ['M  ', 'MM ', 'MMM'], { M: B.CONCRETE }, { same: true });
+    shaped(B.CONCRETE_SLAB, 6, ['SSS'], { S: B.CONCRETE }, { same: true });
+  }
+}
 
 // ---- modern (village-age) recipes -------------------------------------------
 shaped(B.ACACIA_PLANKS, 4, ['L'], { L: B.ACACIA_LOG });
@@ -379,8 +430,9 @@ shaped(B.LECTERN, 1, ['BBB', 'BBB', ' B'], { B: B.BOOKSHELF });
 
 const ingMatch = (ing, id) => (Array.isArray(ing) ? ing.includes(id) : ing === id);
 
-// grid: array of item ids (0 = empty), size gw*gw. Returns {id,count} or null.
-export function matchRecipe(grid, gw) {
+// grid: array of item ids (0 = empty), size gw*gw; metas: parallel dmg values (optional).
+// Returns {id,count,meta} or null. meta = output colour (item dmg) when the recipe carries one.
+export function matchRecipe(grid, gw, metas) {
   let x0 = gw, y0 = gw, x1 = -1, y1 = -1, n = 0;
   for (let y = 0; y < gw; y++) for (let x = 0; x < gw; x++) {
     if (grid[y * gw + x]) {
@@ -405,7 +457,7 @@ export function matchRecipe(grid, gw) {
         }
         if (!found) { ok = false; break; }
       }
-      if (ok) return { id: r.out, count: r.count };
+      if (ok) return { id: r.out, count: r.count, meta: r.outMeta };
       continue;
     }
     if (r.w !== w || r.h !== h) continue;
@@ -416,7 +468,16 @@ export function matchRecipe(grid, gw) {
         const have = grid[(y0 + y) * gw + x0 + x];
         if (want === 0 ? have !== 0 : !ingMatch(want, have)) { ok = false; break; }
       }
-      if (ok) return { id: r.out, count: r.count };
+      if (ok && r.sameColor && metas) {
+        let cm = -1;
+        for (let y = 0; y < h && ok; y++) for (let x = 0; x < w; x++) {
+          const want = r.grid[y * w + (flip ? w - 1 - x : x)];
+          if (!want) continue;
+          const m = metas[(y0 + y) * gw + x0 + x] & 15;
+          if (cm < 0) cm = m; else if (cm !== m) { ok = false; break; }
+        }
+        if (ok) return { id: r.out, count: r.count, meta: cm };
+      } else if (ok) return { id: r.out, count: r.count, meta: r.outMeta };
     }
   }
   return null;
@@ -452,10 +513,12 @@ export function getDrops(id, meta, tool, rand = Math.random) {
     case B.DIAMOND_ORE: return one(I.DIAMOND);
     case B.REDSTONE_ORE: return one(I.REDSTONE, ri(rand, 4, 5));
     case B.LAPIS_ORE: return one(I.LAPIS, ri(rand, 4, 8));
-    case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES: {
+    case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES:
+    case B.POPLAR_LEAVES_RED: case B.POPLAR_LEAVES_ORANGE: case B.POPLAR_LEAVES_YELLOW: {
       if (shears) return one(id);
       const out = [];
-      const sap = id === B.LEAVES ? B.SAPLING : id === B.BIRCH_LEAVES ? B.BIRCH_SAPLING : id === B.SPRUCE_LEAVES ? B.SPRUCE_SAPLING : id === B.ACACIA_LEAVES ? B.ACACIA_SAPLING : B.JUNGLE_SAPLING;
+      const sap = (id === B.LEAVES || id >= B.POPLAR_LEAVES_RED && id <= B.POPLAR_LEAVES_YELLOW) ? (id === B.LEAVES ? B.SAPLING : B.POPLAR_SAPLING)
+        : id === B.BIRCH_LEAVES ? B.BIRCH_SAPLING : id === B.SPRUCE_LEAVES ? B.SPRUCE_SAPLING : id === B.ACACIA_LEAVES ? B.ACACIA_SAPLING : B.JUNGLE_SAPLING;
       if (rand() < 0.06) out.push({ id: sap, count: 1 });
       if (id === B.LEAVES && rand() < 0.01) out.push({ id: I.APPLE, count: 1 });
       if (rand() < 0.03) out.push({ id: I.STICK, count: 1 });
@@ -546,6 +609,14 @@ export const CREATIVE = (() => {
   for (let i = 0; i < 16; i++) add(192 + i); // terracotta colours
   for (let i = 0; i < 16; i++) add(208 + i); // carpets
   for (let i = 0; i < 16; i++) add(224 + i); // glazed terracotta
-  for (let i = 256; i < nextId; i++) add(i);
+  // iteration 3: 26.3 Wilderness Bound blocks
+  add(B.POPLAR_LOG, B.STRIPPED_POPLAR_LOG, B.POPLAR_WOOD, B.STRIPPED_POPLAR_WOOD, B.POPLAR_PLANKS);
+  add(B.POPLAR_LEAVES_RED, B.POPLAR_LEAVES_ORANGE, B.POPLAR_LEAVES_YELLOW, B.POPLAR_SAPLING);
+  add(B.POPLAR_SLAB, B.POPLAR_STAIRS, B.POPLAR_DOOR, B.POPLAR_TRAPDOOR, B.POPLAR_FENCE, B.POPLAR_FENCE_GATE);
+  add(B.POPLAR_PRESSURE_PLATE, B.POPLAR_BUTTON);
+  add(B.LEAF_LITTER, B.RED_SHRUB, B.SHELF_MUSHROOM, B.BIG_SHELF_MUSHROOM);
+  add(B.CUSHION, B.STRAW_BED, B.COPPER_CHEST, 280, 281, 282);
+  add(B.WOOL_STAIRS, B.WOOL_SLAB, B.CONCRETE, B.CONCRETE_STAIRS, B.CONCRETE_SLAB);
+  for (let i = BMAX; i < nextId; i++) add(i);
   return out;
 })();

@@ -147,62 +147,120 @@ initial villagers with their professions.
 ### ✅ Iteration 2 STATUS: COMPLETE
 - Village jigsaw assembly (5 biomes, processors, villager + golem + animal spawns,
   professions) verified in-browser with zero errors. Single-file build: 1,191,315 B.
-- Next: Iteration 3 (Trial Chambers, Breeze, Creaking, Pale Garden).
+- Next: Iteration 3 (26.3 content: Dappled Forest + Abandoned Camps — corrected from
+  the original draft, see iteration 3 note).
 
-### Iteration 3 — 26.3 flagships: Trial Chambers, Creaking, Pale Garden
-- **Research:** trial_chambers.json + pools + templates; breeze/creaking mob behavior
-  (wiki), creaking heart spawn rules, pale garden biome.
-- **Program:** trial chamber jigsaw placement (`encapsulate` carve-out, deep Y, tuff
-  terrain), vaults/heavy core (drop calibrite → loot), trial spawner (periodic breeze
-  wave), **breeze mob** (charge/dash AI, breeze rod projectile), **creaking mob**
-  (moves only when unobsused → line-of-sight check; breaks on observation change,
-  chance to drop creaking heart), creaking heart block (periodic spawn), pale garden
-  biome + vegetation.
+### ✅ Iteration 3 STATUS: COMPLETE — 26.3 flagships: Dappled Forest + Abandoned Camps
+**Scope correction (disclosed to user):** the draft below had Trial Chambers/Creaking/
+Pale Garden (1.21-era content). Research confirmed the *26.3 "Wilderness Bound"*
+release (Sept 15 2026, data 5023) actually adds **Dappled Forest** biome and
+**Abandoned Camp** structures, so the iteration focus was corrected to that;
+Trial Chambers/Breeze moved to iteration 4, Creaking to iteration 5.
+
+- **Research:** Dappled Forest biome wiki (climate/trees/ground flora: poplar with
+  red/orange/yellow tinted leaf variants, leaf litter, red shrub, shelf mushroom) +
+  Abandoned Camp wiki (18 biomes, wool-stair ring, campfire, barrels/chests, cobwebs,
+  dirt path, satellite structures, hidden copper chest) + PixiGeko 26.3 vanilla asset
+  branch (authoritative PNGs, data version 5023).
+- **Program:**
+  - `src/worldgen.js`: DAPPLED_FOREST biome (temperature/humidity window + noise gate,
+    ~75% poplar / 25% spruce trees, h5–8), poplar tree shape, ground flora
+    (leaf litter, red shrub, shelf mushrooms); ABANDONED CAMP structure placement
+    (Java `random_spread` LCG: spacing 34, salt 91231127, biome whitelist), camp
+    assembly: white wool-stair ring (door gap by facing), central campfire (meta 1),
+    3–6 satellite blocks (chests, barrels, cobwebs, dirt path), 5% hidden
+    oxidized copper chest. Stamped after villages in the 3×3 structure pass.
+  - `src/blocks.js` wave 256–287: poplar family (log/stripped/wood/planks/slab/stairs/
+    fence/gate/door/trapdoor/plate/button/sapling), 3 tinted poplar leaf blocks,
+    leaf litter, red shrub, shelf mushroom + big, cushion (16 colours, meta),
+    straw bed, 4 copper chest oxidation stages (block-entity, interactable),
+    wool stairs/slab (16 colours, meta), concrete + stairs/slab (16 colours, meta).
+  - `src/items.js`: crafting recipes for the whole wave (poplar wood set,
+    3 hay bales → 4 straw beds, 3 same-colour wool slabs → 1 cushion per colour,
+    16× concrete + their stairs/slabs, wool stairs/slabs all 16 colours) + drops.
+- **Texturing:** all wave blocks from real 26.3 PNGs. **Texture pipeline fix (this
+  iteration):** the 233-village-texture module generated in iteration 2 was never
+  imported (orphaned) and was packed with a corrupted ARGB palette order; a unified
+  packer `tools/pack-all-263.mjs` now repacks *everything* (village set + 26.3 wave +
+  21 item icons: 16 dyes, melon slice/seeds, pumpkin/beetroot seeds) from the 26.3
+  asset branch in the correct R<<24|G<<16|B<<8|A order into `src/textures_extra.js`
+  (309 textures), merged into `DATA` by `src/textures.js`. Also fixed a `def()` bug
+  where object-tex blocks without `side`/`all` pushed `undefined` into the TEX
+  registry (campfire, brewing stand, doors) → magenta array layer + warning.
+- **Proof:** (DONE, real Chromium 153 + SwiftShader WebGL2, seed 20240229) fresh
+  world → settle → teleport to a **verified dappled-forest chunk** (-496,-120) and a
+  **verified camp chunk** (-1347,-1312) via Node ground truth
+  (`tools/test-gen-263.mjs` re-implements the exact worldgen in Node and counts
+  blocks per chunk) → in-browser per-chunk histograms (16×16×128) must **match Node
+  exactly**, zero "missing texture" console warnings, zero page errors, 4 screenshots
+  (df1/df2 canopy, camp1/camp2 structure). Ground truth: dappled poplar_log 43,
+  yellow leaves 142, orange 80, spruce 67/22, litter 9, shrub 2, shelf 1; camp
+  wool_stairs 11, campfire 3, chest 3, barrel 2, cobweb 6, dirt_path 1.
+  **Result: PROOF PASS — 0 missing textures, 0 page errors, all counts exact.**
+  Single-file build: 1,441,407 B.
+- Known (documented) gaps: camp barrels generate **empty** (no loot-table system);
+  acacia/jungle trees don't generate naturally (biome trees only); poplar leaf
+  `.mcmeta` animation not implemented (static first frame); copper chest textures
+  kept from iteration-2 pack (not present as PNGs in the 26.3 asset branch).
+
+### Iteration 4 — Deep-feature structures: Trial Chambers + Breeze
+- **Research:** trial_chambers.json + pools + templates (encapsulate carve-out,
+  deep Y, tuff terrain); breeze mob behavior (wiki: hover/charge/dash, breeze rod).
+- **Program:** trial chamber jigsaw placement, vaults/heavy core (drop calibrite →
+  loot), trial spawner (periodic breeze wave), **breeze mob** (charge/dash AI,
+  breeze rod projectile).
 - **Texturing:** tuff/brick/polished, copper bulbs/lanterns, vault, heavy core,
-  trial spawner, breeze rod, creaking heart, pale moss/orchid/froglight, sculk,
-  amethyst — breeze + creaking skins.
-- **Proof:** locate trial chamber (deterministic per seed), navigate the entry→chamber→
-  vault path with the camera, assert heavy core + breezes; assert creaking only moves
-  when camera is away.
+  trial spawner, breeze rod — breeze skin (all present in the 26.3 asset branch).
+- **Proof:** locate trial chamber (deterministic per seed), navigate the
+  entry→chamber→vault path with the camera, assert heavy core + breezes.
 
-### Iteration 4 — Other common structures
-- **Program:** ruined portals (5 variants, small static templates + obsidian frames),
-  pillager outposts (jigsaw, watchtower + cages), woodland manor (jigsaw, witches),
-  igloo (jigsaw, tent + wolf + snow golem), buried treasure (small static + loot chest).
-  Witches: ranged hostile (simple thrown potion), self-heal; add crossbow-less
-  pillager variant? (keep skeleton with crossbow → add crossbow item if cheap).
-- **Texturing:** all blocks used by these template sets + witch/wolf/snow-golem skins.
-- **Proof:** each structure located via its random_spread params, camera tour, asserts.
+### Iteration 5 — Creaking + remaining common structures
+- **Research:** creaking mob behavior (moves only when unobserved → line-of-sight
+  check; breaks on observation change, chance to drop creaking heart), creaking heart
+  spawn rules, pale garden biome polish.
+- **Program:** **creaking mob** + creaking heart block (periodic spawn); common
+  structures: ruined portals (5 variants, obsidian frames), pillager outposts
+  (jigsaw, watchtower + cages), woodland manor (jigsaw, witches), igloo (jigsaw,
+  tent + wolf + snow golem), buried treasure (small static + loot chest). Witches:
+  ranged hostile (simple thrown potion), self-heal.
+- **Texturing:** creaking heart, portal frame obsidian, all blocks used by these
+  template sets + creaking/witch/wolf/snow-golem skins.
+- **Proof:** each structure located via its random_spread params (Node ground truth),
+  camera tour, asserts; creaking only moves when camera is away.
 
-### Iteration 5 — Biome expansion (the rest)
-- **Program:** mushroom fields (mycelium, no light-based hostile spawns, giant
-  mushrooms), mangrove swamp (muddy banks, roots), bamboo jungle, cherry grove
-  (if not done in iter 1), meadow (torchflowers, donkeys→keep sheep/rabbit stand-in?
-  donkey model is cheap → add), badlands/eroded badlands (1.22-style mesa canyons),
-  mountain peaks variants polish, cave biome decoration pass (dripstone columns,
-  glow berries, spore blossoms, sculk in deep dark).
+### Iteration 6 — Biome & mob expansion, integration & polish
+- **Program:** remaining biomes — mushroom fields (mycelium, giant mushrooms,
+  no light-based hostile spawns), mangrove swamp (muddy banks, roots), bamboo
+  jungle, meadow (torchflowers), badlands (1.22-style mesa canyons), mountain
+  peaks variants polish, cave decoration pass (dripstone columns, glow berries,
+  spore blossoms, sculk in deep dark).
 - **Mobs:** goat (ram charge), camel, sniffer, frog (+ hop), axolotl (water),
-  armadillo (rolls into ball), wolf (follow/attack), bat, rabbit (meadow table wants it),
-  slime (monster tables want it — small, bouncy, cheap).
+  armadillo (rolls into ball), wolf (follow/attack), bat, rabbit, slime (small,
+  bouncy, cheap).
 - **Texturing:** all their blocks + skins (all present in the pack).
+- **Integration:** save format update (new block IDs, village/villager data), world
+  size scaling, mesher performance for new block shapes, README documentation of the
+  new systems, full regression proof run (all structures + biomes + mobs, one pass).
 - **Proof:** biome-by-biome camera sweep per fixed seed; spawn-table assertions.
 
-### Iteration 6 — Integration & polish
-- Save format update (new block IDs, village/villager data), world size scaling,
-  performance (mesher pass for new block shapes), README documentation of the new
-  systems, full regression proof run (all structures + biomes + mobs, one pass).
+## Proof harness (built in iteration 1, reused always — actual implementation)
 
-## Proof harness (built in iteration 1, reused always)
-
-- Browser: `@sparticuz/chromium` (npm, bundles its own libs — no apt/CDN needed) +
-  `playwright-core`, launched with the package's `executablePath()` and `env`.
-- `test/proof.mjs`:
-  1. serve `fablecraft.html` (static server, 0.0.0.0), open with Playwright;
-  2. capture console (fail on "missing texture");
-  3. use a debug hook exposed on `window.__FC` (seed override, teleport, spawn,
-     `getBiome(x,z)`, `getBlock(x,y,z)`, entity list) — tiny, dev-only, stripped by the
-     single-file build if needed (it's inside the bundle either way, gated by URL param);
-  4. per-iteration scenario scripts: navigate, wait, assert, screenshot to `test/out/`.
+- `/home/user/proof/proof-263.mjs` (puppeteer-core + `@sparticuz/chromium` 153):
+  1. serve the single-file `dist/fablecraft.html` on 127.0.0.1, open in Chromium;
+  2. launch args: package defaults minus headless/single-process/in-process-gpu/
+     no-zygote + `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`;
+     env: NSS stub libs (`nssstub/`) + GL libs next to the binary + absolute
+     SwiftShader ICD json (`VK_ICD_FILENAMES`) → WebGL2 works headless;
+  3. capture console + page errors; start world (seed 20240229, creative, day);
+     wait for spawn chunk settle (chunks≥25, pending≤16);
+  4. teleport to **verified chunks** (found via Node ground truth, not guessing),
+     wait on `world.isLoaded(bx,bz)` with BLOCK coords (±16 neighbourhood);
+  5. in-browser per-chunk block histogram (16×16×128) must match the Node
+     ground truth (`tools/test-gen-263.mjs`) **exactly**;
+  6. PASS = exact counts ∧ zero "missing texture" warnings ∧ zero page errors;
+     report → `report-263.json` + 4 screenshots (df1/df2/camp1/camp2).
+- Puppeteer gotchas (persisted): `isLoaded` takes BLOCK coords; `waitForFunction`
+  args must be scalars as separate trailing params, not one destructured object.
 
 ## Done-when (per iteration)
 

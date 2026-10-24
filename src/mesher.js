@@ -2,7 +2,7 @@
 // Vertex (16 bytes): u16 x,y,z (1/256 block, +1 block bias), u16 layer,
 //                    u8 u,v (1/128), u8 sky, u8 block, u8 r,g,b, u8 flags
 // flags: bits 0-1 animation (1 water, 2 lava, 3 fire), bit 2 = no mipmaps
-import { blocks, OPAQUE, SHAPE, SH, SOLID, B, WH, FACING_TO_FACE, FACING_DX, FACING_DZ, doorBoxIndex, fenceConnects, isLeaves } from './blocks.js';
+import { blocks, OPAQUE, SHAPE, SH, SOLID, B, WH, FACING_TO_FACE, FACING_DX, FACING_DZ, doorBoxIndex, fenceConnects, isLeaves, BMAX } from './blocks.js';
 import { hash2 } from './noise.js';
 
 export const PW = 18;
@@ -63,7 +63,7 @@ for (let f = 0; f < 6; f++) {
 
 let pb, pm, pl;
 const skyV = new Float32Array(4), blkV = new Float32Array(4), aoV = new Float32Array(4);
-const tints = { grass: new Int32Array(256), foliage: new Int32Array(256), water: new Int32Array(256) };
+const tints = { grass: new Int32Array(BMAX), foliage: new Int32Array(BMAX), water: new Int32Array(BMAX) };
 
 function vert(buf, x, y, z, layer, u, v, sky, blk, r, g, b, fl) {
   if (buf.n >= buf.cap) buf.grow();
@@ -320,19 +320,22 @@ function special(id, meta, idx, x, y, z, d, col, wx, wz) {
     case SH.FIRE: fire(idx, x, y, z, d); break;
     case SH.TORCH: torch(meta, idx, x, y, z, d); break;
     case SH.FLUID: fluid(id, idx, x, y, z, d, col); break;
-    case SH.SLAB:
-      if (meta & 1) box(OPQ, idx, x, y, z, 0, 0.5, 0, 1, 1, 1, d.faces, 63, 0xffffff, fl);
-      else box(OPQ, idx, x, y, z, 0, 0, 0, 1, 0.5, 1, d.faces, 63, 0xffffff, fl);
+    case SH.SLAB: {
+      const sf = d.metaFaces ? (d.metaFaces(meta) || d.faces) : d.faces;
+      if (meta & 1) box(OPQ, idx, x, y, z, 0, 0.5, 0, 1, 1, 1, sf, 63, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0, 0, 0, 1, 0.5, 1, sf, 63, 0xffffff, fl);
       break;
+    }
     case SH.STAIRS: {
+      const stf = d.metaFaces ? (d.metaFaces(meta) || d.faces) : d.faces;
       const up = meta & 4, f = meta & 3;
-      if (up) box(OPQ, idx, x, y, z, 0, 0.5, 0, 1, 1, 1, d.faces, 63, 0xffffff, fl);
-      else box(OPQ, idx, x, y, z, 0, 0, 0, 1, 0.5, 1, d.faces, 63, 0xffffff, fl);
+      if (up) box(OPQ, idx, x, y, z, 0, 0.5, 0, 1, 1, 1, stf, 63, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0, 0, 0, 1, 0.5, 1, stf, 63, 0xffffff, fl);
       const ya = up ? 0 : 0.5, yb = up ? 0.5 : 1, m = up ? 63 & ~4 : 63 & ~8;
-      if (f === 0) box(OPQ, idx, x, y, z, 0, ya, 0.5, 1, yb, 1, d.faces, m, 0xffffff, fl);
-      else if (f === 1) box(OPQ, idx, x, y, z, 0, ya, 0, 0.5, yb, 1, d.faces, m, 0xffffff, fl);
-      else if (f === 2) box(OPQ, idx, x, y, z, 0, ya, 0, 1, yb, 0.5, d.faces, m, 0xffffff, fl);
-      else box(OPQ, idx, x, y, z, 0.5, ya, 0, 1, yb, 1, d.faces, m, 0xffffff, fl);
+      if (f === 0) box(OPQ, idx, x, y, z, 0, ya, 0.5, 1, yb, 1, stf, m, 0xffffff, fl);
+      else if (f === 1) box(OPQ, idx, x, y, z, 0, ya, 0, 0.5, yb, 1, stf, m, 0xffffff, fl);
+      else if (f === 2) box(OPQ, idx, x, y, z, 0, ya, 0, 1, yb, 0.5, stf, m, 0xffffff, fl);
+      else box(OPQ, idx, x, y, z, 0.5, ya, 0, 1, yb, 1, stf, m, 0xffffff, fl);
       break;
     }
     case SH.CACTUS:
@@ -590,7 +593,7 @@ export function meshChunk(b, m, l, cx, cz, climate) {
 // Standalone mesh of a single block (for held items, dropped items, falling blocks).
 let single = null;
 export function meshSingle(id, meta = 0) {
-  if (!single) single = { b: new Uint8Array(PSIZE), m: new Uint8Array(PSIZE), l: new Uint8Array(PSIZE).fill(0xf0) };
+  if (!single) single = { b: new Uint16Array(PSIZE), m: new Uint8Array(PSIZE), l: new Uint8Array(PSIZE).fill(0xf0) };
   const i = (1 * PW + 1) * PH + 1;
   single.b[i] = id; single.m[i] = meta;
   const fake = { grass: () => 0x7fb84a, foliage: () => 0x5fa82e, water: () => 0x3f76e4 };

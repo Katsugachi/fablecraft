@@ -494,4 +494,206 @@ export function villagesNear(px, pz, seed, gen, range = 6) {
   return out;
 }
 
+// ===========================================================================
+// Abandoned camps (26.3 Wilderness Bound)
+//
+// Placement: vanilla RandomSpreadPlacement for the camp structure — spacing 34,
+// separation 8, salt 91231127, frequency 1, biome gate (vanilla list ∩ fablecraft
+// biomes).  One camp per region; the start chunk's centre biome must be allowed.
+//
+// Assembly: vanilla assembles camps from two jigsaw pools (10 tent variants +
+// 48 campsite elements, all weight 1, max_depth 3).  Fablecraft has no jigsaw
+// templates for camps, so the camp is assembled PROCEDURALLY with the same
+// constants and visual grammar (per the wiki's Abandoned Camp article):
+//   * white wool-stair tent, 5x5, front open, irregular height, decay (cobwebs
+//     / leaves replacing wool)
+//   * unlit campfire + chest or barrel inside, dirt/gravel/path floor patches
+//   * 3-6 loose campsite features around the tent (campfires, log benches,
+//     log piles, barrels, chests, shrubs, flowers, cobwebs)
+//   * 5% hidden oxidised copper chest buried one block under the surface
+// Deterministic per (seed, region) via java.util.Random.
+
+const CAMP_SPACING = 34, CAMP_SEPARATION = 8, CAMP_SALT = 91231127;
+const CAMP_BIOMES = new Set([2, 3, 4, 5, 7, 9, 10, 11, 13, 14]); // plains..dappled forest
+const campCache = new Map();
+
+function campStartChunk(cx, cz, seed) {
+  const rx = Math.floor(cx / CAMP_SPACING), rz = Math.floor(cz / CAMP_SPACING);
+  const r = spreadRand(rx, rz, seed, CAMP_SALT);
+  const b = CAMP_SPACING - CAMP_SEPARATION;
+  return [rx * CAMP_SPACING + r.nextInt(b), rz * CAMP_SPACING + r.nextInt(b)];
+}
+
+// world-coordinate cells: [wx, wy, wz, id, meta]
+function buildCamp(scx, scz, seed, gen) {
+  const cx = scx * CH, cz = scz * CH;
+  const r = new JRand(0);
+  r.setLargeFeatureSeed(seed, scx, scz);
+  const frand = () => r.next(30) / 1073741824;
+  const cells = [];
+  const H = (x, z) => {
+    const h = gen.heightAt(x, z);
+    return h >= SEA ? h : SEA - 1;
+  };
+  const surf = H(cx + 8, cz + 8);
+  const biome = gen.biomeAt(cx + 8, cz + 8);
+  const rot = r.nextInt(4); // tent facing (door direction)
+  const variant = r.nextInt(10); // 10 tent variants (vanilla tent pool size)
+  const FDX = [1, -1, 0, 0], FDZ = [0, 0, 1, -1];
+  const fx = FDX[rot], fz = FDZ[rot];
+  // door cell sits at the centre of the face the rot direction points along
+  const ox = fx === 1 ? 4 : fx === -1 ? 0 : 2;
+  const oz = fz === 1 ? 4 : fz === -1 ? 0 : 2;
+  const tx = cx + 8 - ox, tz = cz + 8 - oz;
+  const leavesFor = () => biome === 5 || biome === 7 || biome === 11 ? B.SPRUCE_LEAVES
+    : biome === 14 ? B.POPLAR_LEAVES_RED : biome === 9 ? B.ACACIA_LEAVES : B.LEAVES;
+  const logFor = () => biome === 5 || biome === 7 || biome === 11 ? B.SPRUCE_LOG
+    : biome === 14 ? B.POPLAR_LOG : biome === 9 ? B.ACACIA_LOG : B.LOG;
+
+  // ---- floor patches (vanilla: dirt / gravel / dirt path) -------------------
+  for (let lx = 0; lx < 5; lx++) for (let lz = 0; lz < 5; lz++) {
+    const wx = tx + lx, wz = tz + lz, h = H(wx, wz);
+    if (frand() < 0.5) {
+      const f = frand();
+      cells.push([wx, h, wz, f < 0.55 ? B.DIRT : f < 0.8 ? B.GRAVEL : B.DIRT_PATH, 0]);
+    }
+  }
+  // ---- tent shell: white wool stairs, 4 corners rounded, front open ---------
+  const wall = [];
+  for (let lx = 0; lx < 5; lx++) for (let lz = 0; lz < 5; lz++) {
+    const edge = lx === 0 || lx === 4 || lz === 0 || lz === 4;
+    if (!edge) continue;
+    const corner = (lx === 0 || lx === 4) && (lz === 0 || lz === 4);
+    if (corner) continue; // rounded
+    if (lx === ox && lz === oz) continue; // door
+    if (fx === 1 && lx === 4 && (lz === oz - 1 || lz === oz + 1)) continue; // 3-wide door
+    if (fx === -1 && lx === 0 && (lz === oz - 1 || lz === oz + 1)) continue;
+    if (fz === 1 && lz === 4 && (lx === ox - 1 || lx === ox + 1)) continue;
+    if (fz === -1 && lz === 0 && (lx === ox - 1 || lx === ox + 1)) continue;
+    wall.push([lx, lz]);
+  }
+  for (const [lx, lz] of wall) {
+    const wx = tx + lx, wz = tz + lz, h = H(wx, wz);
+    const out = lx === 0 ? 0 : lx === 4 ? 1 : lz === 0 ? 3 : 2; // stair facing out
+    cells.push([wx, h + 1, wz, B.WOOL_STAIRS, (0 << 3) | out | 4]);
+    // variant height: variant 0-3 low, 4-7 two-storey back, 8-9 roofed
+    if (variant >= 4) {
+      const back = (fx === 1 && lx === 0) || (fx === -1 && lx === 4) || (fz === 1 && lz === 0) || (fz === -1 && lz === 4);
+      if (variant >= 8 || back || frand() < 0.25) cells.push([wx, h + 2, wz, B.WOOL_STAIRS, (0 << 3) | out | 4]);
+    }
+  }
+  if (variant >= 8) { // roof: wool slab ring + a few filled
+    for (const [lx, lz] of wall) {
+      const wx = tx + lx, wz = tz + lz, h = H(wx, wz);
+      if (frand() < 0.6) cells.push([wx, h + 3, wz, B.WOOL_SLAB, 0 << 1 | 1]);
+    }
+  }
+  // ---- decay: cobwebs / leaves replacing wool (abandoned look) --------------
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    if (c[3] !== B.WOOL_STAIRS) continue;
+    const u = frand();
+    if (u < 0.18) { c[3] = B.COBWEB; c[4] = 0; }
+    else if (u < 0.30) { c[3] = leavesFor(); c[4] = 0; }
+  }
+  // ---- interior: unlit campfire + storage ------------------------------------
+  {
+    const wx = tx + 2, wz = tz + 2, h = H(wx, wz);
+    cells.push([wx, h + 1, wz, B.CAMPFIRE, 1]); // unlit
+    const bx = tx + 2 - fx * (fx ? 1 : 0) + (fx ? 0 : (frand() < 0.5 ? 1 : -1));
+    const bz = tz + 2 - fz * (fz ? 1 : 0) + (fz ? 0 : (frand() < 0.5 ? 1 : -1));
+    const b2 = frand() < 0.55 ? B.CHEST : B.BARREL;
+    cells.push([bx, h + 1, bz, b2, r.nextInt(4)]);
+    if (frand() < 0.4) { // cushion
+      const cx2 = tx + (frand() < 0.5 ? 1 : 3), cz2 = tz + (frand() < 0.5 ? 1 : 3);
+      const hh = H(cx2, cz2);
+      cells.push([cx2, hh + 1, cz2, B.CUSHION, r.nextInt(16)]);
+    } else if (frand() < 0.25) { // straw bed (2 blocks)
+      const bx2 = tx + 2 + (fx ? 0 : (frand() < 0.5 ? 1 : -1)) - (fx ? 1 : 0);
+      const bz2 = tz + 2 + (fz ? 0 : (frand() < 0.5 ? 1 : -1)) - (fz ? 1 : 0);
+      const hh = H(bx2, bz2);
+      cells.push([bx2, hh + 1, bz2, B.STRAW_BED, rot]);
+      cells.push([bx2 + (fx || (frand() < 0.5 ? 1 : -1) * 0 || 0) + (fz ? (frand() < 0.5 ? 1 : -1) : 0) * 0 + (fx ? 0 : 0), hh + 1, bz2 + (fz || 0), B.STRAW_BED, rot | 4]);
+    }
+  }
+  // ---- campsite features around the tent (vanilla campsite pool, 48 elems) ---
+  const nFeat = 3 + r.nextInt(4);
+  const placed = new Set();
+  for (let f = 0; f < nFeat * 4 && f < 24; f++) {
+    const a = frand() * 6.283, d = 3 + r.nextInt(4);
+    const wx = cx + 8 + Math.round(Math.cos(a) * d), wz = cz + 8 + Math.round(Math.sin(a) * d);
+    const key = wx + ',' + wz;
+    if (placed.has(key)) continue;
+    const h = H(wx, wz);
+    if (h < SEA) continue;
+    const u = frand();
+    if (u < 0.22) { placed.add(key); cells.push([wx, h + 1, wz, B.CAMPFIRE, 1]); }
+    else if (u < 0.38) { // log bench: log + slab seat
+      placed.add(key);
+      cells.push([wx, h + 1, wz, logFor(), 0]);
+      const s = r.nextInt(4), sx = wx + FDX[s], sz = wz + FDZ[s];
+      const hs = H(sx, sz);
+      if (hs === h) cells.push([sx, h + 1, sz, B.WOOL_SLAB, 0]);
+    } else if (u < 0.5) { // log pile
+      placed.add(key);
+      cells.push([wx, h + 1, wz, logFor(), 0]);
+      if (frand() < 0.6) cells.push([wx, h + 2, wz, logFor(), 0]);
+    } else if (u < 0.58) { placed.add(key); cells.push([wx, h + 1, wz, B.BARREL, r.nextInt(4)]); }
+    else if (u < 0.66) { placed.add(key); cells.push([wx, h + 1, wz, B.CHEST, r.nextInt(4)]); }
+    else if (u < 0.74 && biome === 14) { placed.add(key); cells.push([wx, h + 1, wz, B.RED_SHRUB, 0]); }
+    else if (u < 0.80 && (biome === 14 || biome === 13)) { placed.add(key); cells.push([wx, h + 1, wz, B.LEAF_LITTER, 0]); }
+    else if (u < 0.88) { placed.add(key); cells.push([wx, h + 1, wz, B.DANDELION, 0]); }
+    else { placed.add(key); cells.push([wx, h + 1, wz, B.DEAD_BUSH, 0]); }
+  }
+  // ---- hidden oxidised copper chest (5%) --------------------------------------
+  if (frand() < 0.05) {
+    const a = frand() * 6.283, d = 4 + r.nextInt(5);
+    const wx = cx + 8 + Math.round(Math.cos(a) * d), wz = cz + 8 + Math.round(Math.sin(a) * d);
+    const h = H(wx, wz);
+    if (h > 2) cells.push([wx, h - 1, wz, B.COPPER_CHEST_OXIDIZED, 0]);
+  }
+  // bounds
+  let x0 = 1 << 30, x1 = -1 << 30, z0 = 1 << 30, z1 = -1 << 30, y0 = 1 << 30, y1 = -1 << 30;
+  for (const c of cells) {
+    if (c[0] < x0) x0 = c[0]; if (c[0] > x1) x1 = c[0];
+    if (c[2] < z0) z0 = c[2]; if (c[2] > z1) z1 = c[2];
+    if (c[1] < y0) y0 = c[1]; if (c[1] > y1) y1 = c[1];
+  }
+  return { cells, bounds: [x0, y0, z0, x1, y1, z1] };
+}
+
+export function stampCamps(cx, cz, seed, gen, blocks, meta) {
+  const out = [];
+  const x0 = cx * CH, z0 = cz * CH;
+  const rx = Math.floor(cx / CAMP_SPACING), rz = Math.floor(cz / CAMP_SPACING);
+  const seen = new Set();
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+    const [scx, scz] = campStartChunk((rx + dx) * CAMP_SPACING, (rz + dz) * CAMP_SPACING, seed);
+    const key = scx + ',' + scz;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!CAMP_BIOMES.has(gen.biomeAt(scx << 4, scz << 4))) continue;
+    const ck = seed + ':c:' + key;
+    let c = campCache.get(ck);
+    if (c === undefined) {
+      try { c = buildCamp(scx, scz, seed, gen); } catch (e) { c = null; }
+      if (campCache.size > 256) campCache.clear();
+      campCache.set(ck, c);
+    }
+    if (!c) continue;
+    const b = c.bounds;
+    if (b[0] > x0 + CH - 1 || b[3] < x0 || b[2] > z0 + CH - 1 || b[5] < z0) continue;
+    for (const [wx, wy, wz, id, mt] of c.cells) {
+      const dxw = wx - x0, dzw = wz - z0;
+      if (dxw < 0 || dxw >= CH || dzw < 0 || dzw >= CH || wy < 0 || wy >= WH) continue;
+      const i = (dxw << 11) | (dzw << 7) | wy;
+      if (!id) continue;
+      // never overwrite bedrock/air-in-cave: write over whatever is there (beard_thin: surface only, y >= SEA handled)
+      blocks[i] = id;
+      meta[i] = mt;
+    }
+  }
+  return out;
+}
+
 export { GENTS, GPROFS };
