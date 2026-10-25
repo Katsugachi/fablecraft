@@ -451,6 +451,53 @@ B.WOOL = 96;
   def(305, 'ominous_vault', 'Ominous Vault', { shape: SH.CHEST, tex: { top: 'vault_top_ominous', side: 'vault_side_off_ominous', front: 'vault_front_off_ominous' }, h: 1, snd: 'stone', noItem: 1, metaFaces: (m) => (m & 1 ? new Uint16Array([texId('vault_side_off_ominous'), texId('vault_side_off_ominous'), texId('vault_top_ominous'), texId('vault_top_ominous'), texId('vault_side_on_ominous'), texId('vault_front_on_ominous')]) : new Uint16Array([texId('vault_side_off_ominous'), texId('vault_side_off_ominous'), texId('vault_top_ominous'), texId('vault_top_ominous'), texId('vault_side_off_ominous'), texId('vault_front_off_ominous')])) });
   def(306, 'heavy_core', 'Heavy Core', { tex: 'heavy_core', cutout: 1, h: 3, snd: 'metal' });
 
+  // ---- iteration 5: creaking, pale garden, nether structures -------------------
+  // ids 307-333. Real 26.3 (Wilderness Bound) textures from tools/pack-all-263.mjs
+  // section J. Creaking heart meta: bit0 = awake (per-meta faces, vault pattern),
+  // bits1-2 = log axis (0=y, 1=x, 2=z) used by the creaking spawn rule.
+  const poLog = def(307, 'pale_oak_log', 'Pale Oak Log', { tex: { top: 'pale_oak_log_top', side: 'pale_oak_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  poLog.log = 1;
+  def(308, 'pale_oak_planks', 'Pale Oak Planks', { tex: 'pale_oak_planks', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(309, 'pale_oak_leaves', 'Pale Oak Leaves', { tex: 'pale_oak_leaves', cutout: 1, opac: 1, h: 0.2, t: 'shears', snd: 'grass', flam: 1, ticks: 1 });
+  def(310, 'pale_oak_slab', 'Pale Oak Slab', slab({ tex: { top: 'pale_oak_planks', side: 'pale_oak_slab_side', all: 'pale_oak_slab_side' }, h: 2, t: AXE, snd: 'wood', flam: 1, full: 308 }));
+  def(311, 'pale_oak_stairs', 'Pale Oak Stairs', stairs({ tex: 'pale_oak_planks', h: 2, t: AXE, snd: 'wood', flam: 1 }));
+  def(312, 'pale_moss_block', 'Pale Moss Block', { tex: 'pale_moss_block', h: 1, t: SHOVEL, snd: 'grass' });
+  def(313, 'pale_moss_carpet', 'Pale Moss Carpet', { shape: SH.CARPET, tex: 'pale_moss_carpet', h: 0.1, t: 'shears', snd: 'grass', flam: 1 });
+  def(314, 'eyeblossom', 'Eyeblossom', { shape: SH.CROSS, tex: 'open_eyeblossom', cutout: 1, emit: 8, h: 0, t: 'shears', snd: 'grass', flat: 'open_eyeblossom' });
+  def(315, 'resin_clump', 'Resin Clump', { shape: SH.CROSS, tex: 'resin_clump', cutout: 1, h: 0, snd: 'wood', solid: 0, flat: 'resin_clump' });
+  def(316, 'block_of_resin', 'Block of Resin', { tex: 'resin_block', h: 2, t: AXE, snd: 'wood' });
+  def(317, 'resin_bricks', 'Resin Bricks', { tex: 'resin_bricks', h: 2, t: AXE, snd: 'wood' });
+  def(318, 'creaking_heart', 'Creaking Heart', {
+    tex: { side: 'creaking_heart_dormant', top: 'creaking_heart_top_dormant' },
+    h: 1, snd: 'wood',
+    metaFaces: (m) => (m & 1 ? new Uint16Array([
+      texId('creaking_heart_awake'), texId('creaking_heart_awake'),
+      texId('creaking_heart_top_awake'), texId('creaking_heart_top_dormant'),
+      texId('creaking_heart_awake'), texId('creaking_heart_awake'),
+    ]) : new Uint16Array([
+      texId('creaking_heart_dormant'), texId('creaking_heart_dormant'),
+      texId('creaking_heart_top_dormant'), texId('creaking_heart_top_dormant'),
+      texId('creaking_heart_dormant'), texId('creaking_heart_dormant'),
+    ])),
+  });
+  def(319, 'netherrack', 'Netherrack', { tex: 'netherrack', h: 2, t: PICK, snd: 'stone', flam: 1 });
+  def(320, 'nether_bricks', 'Nether Bricks', { tex: 'nether_bricks', h: 2, t: PICK, snd: 'stone' });
+  def(321, 'crying_obsidian', 'Crying Obsidian', { tex: 'crying_obsidian', emit: 10, h: 50, t: PICK, lv: 3, need: 1, resist: 6000 });
+  def(322, 'chiseled_stone_bricks', 'Chiseled Stone Bricks', { tex: 'chiseled_stone_bricks', h: 1.5, t: PICK, need: 1, resist: 30 });
+  def(323, 'cracked_stone_bricks', 'Cracked Stone Bricks', { tex: 'cracked_stone_bricks', h: 1.5, t: PICK, need: 1, resist: 30 });
+  const doLog = def(324, 'dark_oak_log', 'Dark Oak Log', { tex: { top: 'dark_oak_log_top', side: 'dark_oak_log' }, h: 2, t: AXE, snd: 'wood', flam: 1 });
+  doLog.log = 1;
+  def(325, 'dark_oak_planks', 'Dark Oak Planks', { tex: 'dark_oak_planks', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(326, 'dark_oak_fence', 'Dark Oak Fence', { shape: SH.FENCE, tex: 'dark_oak_fence', h: 2, t: AXE, snd: 'wood', flam: 1 });
+  def(327, 'dark_oak_slab', 'Dark Oak Slab', slab({ tex: { top: 'dark_oak_planks', side: 'dark_oak_slab_side', all: 'dark_oak_slab_side' }, h: 2, t: AXE, snd: 'wood', flam: 1, full: 325 }));
+  def(328, 'dark_oak_stairs', 'Dark Oak Stairs', stairs({ tex: 'dark_oak_planks', h: 2, t: AXE, snd: 'wood', flam: 1 }));
+  def(329, 'purpur_block', 'Purpur Block', { tex: 'purpur_block', h: 1, t: PICK, snd: 'stone' });
+  def(330, 'purpur_pillar', 'Purpur Pillar', { tex: { side: 'purpur_pillar_side', top: 'purpur_pillar_top', bottom: 'purpur_pillar_top' }, h: 1, t: PICK, snd: 'stone' });
+  def(331, 'soul_lantern', 'Soul Lantern', { shape: SH.FURN, tex: 'soul_lantern', cutout: 1, emit: 10, h: 0.6, t: PICK, need: 1, snd: 'metal', flat: 'item_soul_lantern' });
+  def(332, 'purple_stained_glass', 'Purple Stained Glass', { tex: 'purple_stained_glass', transl: 1, opac: 15, h: 0.3, t: 'none', snd: 'glass', need: 1 });
+  def(333, 'chiseled_nether_bricks', 'Chiseled Nether Bricks', { tex: 'chiseled_nether_bricks', h: 2, t: PICK, snd: 'stone' });
+  def(334, 'pale_oak_sapling', 'Pale Oak Sapling', plant('pale_oak_sapling', { ticks: 1, sel: [0.1, 0, 0.1, 0.9, 0.8, 0.9] }));
+
   // ---- iteration 3 texture id pre-registration ---------------------------------
   for (let i = 0; i < 16; i++) { texId('wool_' + i); texId('cushion_' + WOOL_COLORS[i][0]); texId('concrete_' + WOOL_COLORS[i][0]); }
 
@@ -480,9 +527,9 @@ export const WOOL_RGB = WOOL_COLORS.map(([, , c]) => c);
 for (let i = 0; i < 10; i++) texId('crack_' + i);
 ['p_smoke', 'p_flame', 'p_bubble', 'p_splash', 'p_crit', 'p_heart', 'p_note', 'p_white', 'p_explode', 'p_lava'].forEach(texId);
 
-export const isLeaves = (id) => id === 16 || id === 55 || id === 58 || id === 176 || id === 247 || id === 270 || id === 271 || id === 272;
-export const isLog = (id) => id === 15 || id === 54 || id === 57 || id === 173 || id === 244 || (id >= 256 && id <= 259);
-export const isSapling = (id) => id === 6 || id === 71 || id === 72 || id === 177 || id === 248 || id === 269;
+export const isLeaves = (id) => id === 16 || id === 55 || id === 58 || id === 176 || id === 247 || id === 270 || id === 271 || id === 272 || id === 309;
+export const isLog = (id) => id === 15 || id === 54 || id === 57 || id === 173 || id === 244 || (id >= 256 && id <= 259) || id === 307 || id === 324;
+export const isSapling = (id) => id === 6 || id === 71 || id === 72 || id === 177 || id === 248 || id === 269 || id === 334;
 export const isFlower = (id) => id === 22 || id === 23 || (id >= 73 && id <= 75);
 export const isWool = (id) => id >= 96 && id < 112;
 export const COLOR_BLOCKS = new Set([277, 283, 284, 285, 286, 287]); // colour chosen via item dmg meta

@@ -1,7 +1,7 @@
 // FableCraft - game bootstrap, main loop, input, camera and glue between the systems.
 import { m4, clamp, lerp } from './math.js';
 import { B, blocks, SEA, WH, FLUID, SOLID, BMAX } from './blocks.js';
-import { items, itemByKey, I } from './items.js';
+import { items, itemByKey, I, matchRecipe, getDrops, SMELT } from './items.js';
 import { Renderer, lightRGB } from './renderer.js';
 import { World } from './world.js';
 import { BIOME } from './worldgen.js';
@@ -14,6 +14,7 @@ import { AudioSys } from './audio.js';
 import { UI } from './ui.js';
 import { Save } from './save.js';
 import { installFont } from './font.js';
+import { getTex } from './textures.js';
 
 const PI = Math.PI;
 const DEFAULTS = { fov: 70, renderDist: 8, sensitivity: 1, gamma: 0.4, master: 1, music: 0.5, sfx: 1, clouds: true, bobbing: true, guiScale: 0, difficulty: 2 };
@@ -725,3 +726,9 @@ try {
 } catch (e) {
   start({});
 }
+
+// ---- test hook -----------------------------------------------------------------
+// Exposed for automated browser proofing (tools/proof-263.mjs). Read-only window
+// into the bundled registries so the test can verify generation and recipes
+// without reaching into module scope. Not used by any game feature.
+window.__fc = { B, blocks, I, items, SEA, WH, matchRecipe, getDrops, SMELT, getTex };

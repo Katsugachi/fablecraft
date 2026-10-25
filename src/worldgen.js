@@ -3,13 +3,13 @@
 import { Perlin, hash2, hash3, rand2, mulberry32 } from './noise.js';
 import { B, CH, WH, SEA, OPAQUE } from './blocks.js';
 import { clamp, lerp, smoothstep } from './math.js';
-import { stampVillages, stampCamps, stampTrials } from './structures.js';
+import { stampVillages, stampCamps, stampTrials, stampPortals, stampOutposts, stampMansions, stampIgloos, stampTreasures } from './structures.js';
 
 export const BIOME = {
   OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, BIRCH_FOREST: 4, TAIGA: 5, SNOWY_TUNDRA: 6,
-  SNOWY_TAIGA: 7, DESERT: 8, SAVANNA: 9, SWAMP: 10, MOUNTAINS: 11, RIVER: 12, MEADOW: 13, DAPPLED_FOREST: 14,
+  SNOWY_TAIGA: 7, DESERT: 8, SAVANNA: 9, SWAMP: 10, MOUNTAINS: 11, RIVER: 12, MEADOW: 13, DAPPLED_FOREST: 14, PALE_GARDEN: 15,
 };
-export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Snowy Taiga', 'Desert', 'Savanna', 'Swamp', 'Mountains', 'River', 'Meadow', 'Dappled Forest'];
+export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Birch Forest', 'Taiga', 'Snowy Tundra', 'Snowy Taiga', 'Desert', 'Savanna', 'Swamp', 'Mountains', 'River', 'Meadow', 'Dappled Forest', 'Pale Garden'];
 
 const mixc = (a, b, t) => {
   const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
@@ -56,6 +56,20 @@ export class Climate {
 // Tree shapes as lists of [dx,dy,dz,kind] (kind 0 = log, 1 = leaves). type: 0 oak, 1 birch, 2 spruce.
 export function treeShape(type, rnd) {
   const out = [];
+  if (type === 6) {
+    // pale oak (26.3): tall trunk (5-7), wide rounded crown, flat-ish top
+    const h = 5 + ((rnd() * 3) | 0);
+    for (let yy = h - 3; yy <= h; yy++) {
+      const rad = yy >= h ? 1 : 2;
+      for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+        const corner = Math.abs(dx) === rad && Math.abs(dz) === rad;
+        if (corner && (yy === h ? rnd() < 0.85 : rnd() < 0.7)) continue;
+        out.push([dx, yy, dz, 1]);
+      }
+    }
+    for (let y = 0; y < h; y++) out.push([0, y, 0, 0]);
+    return out;
+  }
   if (type === 5) {
     // poplar (26.3): tall, slender trunk; narrow crown of one leaf colour per tree
     const h = 5 + ((rnd() * 4) | 0);
@@ -97,13 +111,13 @@ export function treeShape(type, rnd) {
   }
   return out;
 }
-export const TREE_LOG = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.ACACIA_LOG, B.JUNGLE_LOG, B.POPLAR_LOG];
-export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.ACACIA_LEAVES, B.JUNGLE_LEAVES, B.POPLAR_LEAVES_RED];
+export const TREE_LOG = [B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.ACACIA_LOG, B.JUNGLE_LOG, B.POPLAR_LOG, B.PALE_OAK_LOG];
+export const TREE_LEAVES = [B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES, B.ACACIA_LEAVES, B.JUNGLE_LEAVES, B.POPLAR_LEAVES_RED, B.PALE_OAK_LEAVES];
 export const POPLAR_LEAF_IDS = [B.POPLAR_LEAVES_RED, B.POPLAR_LEAVES_ORANGE, B.POPLAR_LEAVES_YELLOW];
 
 const PAD = 5;
 const PW = CH + PAD * 2;
-const TREE_DENSITY = [0, 0, 0.004, 0.075, 0.07, 0.07, 0.003, 0.055, 0, 0.006, 0.04, 0.012, 0, 0, 0.05];
+const TREE_DENSITY = [0, 0, 0.004, 0.075, 0.07, 0.07, 0.003, 0.055, 0, 0.006, 0.04, 0.012, 0, 0, 0.05, 0.07];
 
 export class WorldGen {
   constructor(seed) {
@@ -162,7 +176,7 @@ export class WorldGen {
     else if (m > 0.45 && h > 84) biome = BIOME.MOUNTAINS;
     else if (h <= SEA + 1 && land < 0.75 && sw < 0.3) biome = BIOME.BEACH;
     else if (t < 0.22) biome = hu > 0.5 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_TUNDRA;
-    else if (t < 0.38) biome = hu > 0.38 ? BIOME.TAIGA : BIOME.PLAINS;
+    else if (t < 0.38) biome = (hu > 0.38 && this.misc.noise2(x / 230 + 12.5, z / 230 - 41.5) > 0.22) ? BIOME.PALE_GARDEN : (hu > 0.38 ? BIOME.TAIGA : BIOME.PLAINS);
     else if (t < 0.55 && hu > 0.42 && hu < 0.62 && this.misc.noise2(x / 170 + 55, z / 170 - 23) > 0.25) biome = BIOME.DAPPLED_FOREST;
     else if (t > 0.68) biome = hu < 0.44 ? BIOME.DESERT : hu < 0.62 ? BIOME.SAVANNA : BIOME.FOREST;
     else if (hu < 0.36) biome = (this.misc.noise2(x / 150 + 31, z / 150 - 7) > 0.18 && hu > 0.2) ? BIOME.MEADOW : BIOME.PLAINS;
@@ -210,6 +224,7 @@ export class WorldGen {
       case BIOME.BIRCH_FOREST: return 2;
       case BIOME.TAIGA: case BIOME.SNOWY_TAIGA: case BIOME.SNOWY_TUNDRA: return 3;
       case BIOME.DAPPLED_FOREST: return (hash2(x, z, s + 1) & 3) < 3 ? 6 : 3;
+      case BIOME.PALE_GARDEN: return (hash2(x, z, s + 1) & 7) < 6 ? 7 : 3; // mostly pale oak, some spruce
       case BIOME.MOUNTAINS: return h < 92 ? 3 : 0;
       case BIOME.DESERT: return 4;
       default: return 1;
@@ -256,6 +271,7 @@ export class WorldGen {
         case BIOME.MOUNTAINS:
           if (h > 99 + n * 4) { top = B.SNOW_BLOCK; fill = B.STONE; } else if (h > 88 + n * 5) { top = fill = B.STONE; }
           break;
+        case BIOME.PALE_GARDEN: top = B.PALE_MOSS_BLOCK; fill = B.DIRT; break;
         default:
           if (wet) top = h > SEA - 3 && n > 0.2 ? B.SAND : B.DIRT;
       }
@@ -324,6 +340,29 @@ export class WorldGen {
         if (k === 0) blocks[i] = TREE_LOG[type];
         else if (blocks[i] === B.AIR) blocks[i] = leafId;
       }
+      // pale oak (26.3): ~20% of naturally-grown trees carry a creaking heart
+      // embedded between two trunk logs (trunk runs vertical -> axis bit 0)
+      // with 1-3 resin clumps hanging in the canopy.
+      if (type === 6 && tr() < 0.2) {
+        const trunkDy = [];
+        for (const [dx, dy, dz, k] of shape) if (k === 0 && dx === 0 && dz === 0) trunkDy.push(dy);
+        trunkDy.sort((a, b) => a - b);
+        if (trunkDy.length >= 3 && tx >= 0 && tx < CH && tz >= 0 && tz < CH) {
+          const dy = trunkDy[1 + ((tr() * (trunkDy.length - 2)) | 0)];
+          const i = (tx << 11) | (tz << 7) | (h + 1 + dy);
+          if (blocks[i] === B.PALE_OAK_LOG) { blocks[i] = B.CREAKING_HEART; meta[i] = 0; }
+        }
+        const nRes = 1 + ((tr() * 3) | 0);
+        let placed = 0, guard = 0;
+        while (placed < nRes && guard++ < 32) {
+          const [dx, dy, dz, k] = shape[(tr() * shape.length) | 0];
+          if (k !== 1) continue;
+          const x = tx + dx, z = tz + dz, y = h + 1 + dy;
+          if (x < 0 || x >= CH || z < 0 || z >= CH || y >= WH) continue;
+          const i = (x << 11) | (z << 7) | y;
+          if (blocks[i] === leafId) { blocks[i] = B.RESIN_CLUMP; placed++; }
+        }
+      }
     }
 
     // ---- plants & snow --------------------------------------------------------
@@ -362,6 +401,12 @@ export class WorldGen {
           else if (u < 0.075) blocks[col + h + 1] = B.RED_SHRUB;
           else if (u > 0.995) blocks[col + h + 1] = u2 < 0.3 ? B.BIG_SHELF_MUSHROOM : B.SHELF_MUSHROOM;
         }
+        if (biome === BIOME.PALE_GARDEN) {
+          // pale moss ground cover (top is already moss); scatter eyeblossoms + moss carpet + grass
+          if (u < 0.05) blocks[col + h + 1] = B.EYEBLOSSOM;
+          else if (u < 0.10) blocks[col + h + 1] = B.PALE_MOSS_CARPET;
+          else if (u < 0.13) blocks[col + h + 1] = B.TALL_GRASS;
+        }
         // sugar cane on the waterline
         if (h === SEA && (ground === B.GRASS || ground === B.SAND || ground === B.DIRT) && blocks[col + h + 1] === B.AIR) {
           const nearWater = H(x - 1, z) < SEA || H(x + 1, z) < SEA || H(x, z - 1) < SEA || H(x, z + 1) < SEA;
@@ -375,7 +420,7 @@ export class WorldGen {
         let y = WH - 2;
         while (y > 0 && blocks[col + y] === B.AIR) y--;
         const id = blocks[col + y];
-        if (id !== B.WATER && id !== B.ICE && id !== B.SNOW_BLOCK && id !== B.LAVA && (OPAQUE[id] || id === B.LEAVES || id === B.SPRUCE_LEAVES || id === B.BIRCH_LEAVES)) {
+        if (id !== B.WATER && id !== B.ICE && id !== B.SNOW_BLOCK && id !== B.LAVA && (OPAQUE[id] || id === B.LEAVES || id === B.SPRUCE_LEAVES || id === B.BIRCH_LEAVES || id === B.PALE_OAK_LEAVES)) {
           blocks[col + y + 1] = B.SNOW_LAYER;
         }
       }
@@ -396,6 +441,15 @@ export class WorldGen {
       ents = ents.concat(stampTrials(cx, cz, seed, this, blocks, meta));
     } catch (e) {
       // trial chamber failure must not break chunk generation
+    }
+    // 26.3 common structures (ruined portals, pillager outposts, woodland
+    // mansions, igloos, buried treasure) — each fails soft, independently.
+    for (const stamp of [stampPortals, stampOutposts, stampMansions, stampIgloos, stampTreasures]) {
+      try {
+        ents = ents.concat(stamp(cx, cz, seed, this, blocks, meta));
+      } catch (e) {
+        // a failed structure must not break chunk generation
+      }
     }
     return { blocks, meta, ents };
   }

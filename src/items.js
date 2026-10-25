@@ -110,6 +110,14 @@ it('mutton', 'Raw Mutton', food(2, 1.2));
 it('cooked_mutton', 'Cooked Mutton', food(6, 9.6));
 it('rotten_flesh', 'Rotten Flesh', food(4, 0.8));
 it('mushroom_stew', 'Mushroom Stew', food(6, 7.2, { stack: 1 }));
+// iteration 5: creaking / brewing / nether materials
+it('glass_bottle', 'Glass Bottle');
+it('glowstone_dust', 'Glowstone Dust', { fuel: 1600 });
+it('sugar', 'Sugar');
+it('spider_eye', 'Spider Eye', { food: { hunger: 1, sat: 0 } });
+it('gold_nugget', 'Gold Nugget');
+it('resin_brick', 'Resin Brick');
+it('nether_brick', 'Nether Brick');
 
 // ---- armor --------------------------------------------------------------------
 export const ARMOR_MATS = {
@@ -154,6 +162,8 @@ export const SMELT = new Map([
   [I.PORKCHOP, I.COOKED_PORKCHOP], [I.BEEF, I.STEAK], [I.CHICKEN, I.COOKED_CHICKEN], [I.MUTTON, I.COOKED_MUTTON],
   [B.COAL_ORE, I.COAL], [B.DIAMOND_ORE, I.DIAMOND], [B.REDSTONE_ORE, I.REDSTONE], [B.LAPIS_ORE, I.LAPIS],
   [B.CLAY, B.TERRACOTTA],
+  // iteration 5
+  [B.NETHERRACK, I.NETHER_BRICK], [B.RESIN_CLUMP, I.RESIN_BRICK], [B.GLOWSTONE, I.GLOWSTONE_DUST],
 ]);
 for (let i = 0; i < 16; i++) SMELT.set(192 + i, 224 + i); // coloured terracotta -> coloured glazed terracotta
 SMELT.set(I.POTATO, I.BAKED_POTATO); // potato -> baked potato
@@ -326,6 +336,42 @@ shaped(B.COPPER_TRAPDOOR, 2, ['II', 'II', 'II'], { I: I.COPPER_INGOT });
 // trial chamber items
 shaped(I.WIND_CHARGE, 4, ['R'], { R: I.BREEZE_ROD });
 shaped(I.MACE, 1, ['C', 'R'], { C: B.HEAVY_CORE, R: I.BREEZE_ROD });
+
+// ---- iteration 5: creaking, pale garden, nether structure recipes (vanilla) --
+// wood processing
+shaped(B.PALE_OAK_PLANKS, 4, ['L'], { L: B.PALE_OAK_LOG });
+shaped(B.PALE_OAK_SLAB, 6, ['SSS'], { S: B.PALE_OAK_PLANKS });
+shaped(B.PALE_OAK_STAIRS, 4, ['M  ', 'MM ', 'MMM'], { M: B.PALE_OAK_PLANKS });
+shaped(B.DARK_OAK_PLANKS, 4, ['L'], { L: B.DARK_OAK_LOG });
+shaped(B.DARK_OAK_SLAB, 6, ['SSS'], { S: B.DARK_OAK_PLANKS });
+shaped(B.DARK_OAK_STAIRS, 4, ['M  ', 'MM ', 'MMM'], { M: B.DARK_OAK_PLANKS });
+shaped(B.DARK_OAK_FENCE, 3, ['PPP', 'PPP'], { P: B.DARK_OAK_PLANKS });
+// resin (vanilla: smelt clump -> brick item; 4 brick items -> resin bricks block;
+// 9 clumps -> block of resin; vertical heart = 2 pale oak logs + block of resin)
+shaped(B.RESIN_BRICKS, 1, ['RR', 'RR'], { R: I.RESIN_BRICK });
+shaped(B.BLOCK_OF_RESIN, 1, ['RRR', 'RRR', 'RRR'], { R: B.RESIN_CLUMP });
+shaped(B.CREAKING_HEART, 1, ['L', 'R', 'L'], { L: B.PALE_OAK_LOG, R: B.BLOCK_OF_RESIN });
+// pale moss (vanilla: 2 blocks -> 3 carpet; the block itself is not craftable)
+shaped(B.PALE_MOSS_CARPET, 3, ['M', 'M'], { M: B.PALE_MOSS_BLOCK });
+// nether (vanilla: smelt netherrack -> brick item; 2x2 bricks -> block)
+shaped(I.NETHER_BRICK, 1, ['NN', 'NN'], { N: B.NETHERRACK });
+shaped(B.NETHER_BRICKS, 1, ['BB', 'BB'], { B: I.NETHER_BRICK });
+shaped(B.CHISELED_NETHER_BRICKS, 1, ['B', 'B'], { B: B.NETHER_BRICKS });
+// stone brick variants (vanilla 1.14+ stack recipes)
+shaped(B.CHISELED_STONE_BRICKS, 1, ['S', 'S'], { S: B.STONE_BRICKS });
+shaped(B.CRACKED_STONE_BRICKS, 1, ['C', 'C'], { C: B.CHISELED_STONE_BRICKS });
+// brewing & misc (vanilla)
+shaped(I.GLASS_BOTTLE, 3, ['G G', ' G '], { G: B.GLASS });
+shapeless(I.GOLD_NUGGET, 9, [I.GOLD_INGOT]);
+shaped(I.GOLD_INGOT, 1, ['NN', 'NN', 'NN'], { N: I.GOLD_NUGGET });
+shaped(B.GLOWSTONE, 1, ['DD', 'DD'], { D: I.GLOWSTONE_DUST });
+// soul lantern: vanilla uses a soul torch (not in fablecraft) — coal stands in for the soul fuel
+shaped(B.SOUL_LANTERN, 4, [' I ', 'ICI', ' I '], { I: I.IRON_INGOT, C: I.COAL });
+// stained glass (vanilla 1.14+: 1 glass + 1 dye -> 8)
+shapeless(B.PURPLE_STAINED_GLASS, 8, [B.GLASS, I.PURPLE_DYE]);
+// sugar (vanilla)
+shapeless(I.SUGAR, 1, [B.SUGAR_CANE]);
+// nether brick item is also crafted 2x2 from netherrack (vanilla smelt OR craft)
 
 // ---- modern (village-age) recipes -------------------------------------------
 shaped(B.ACACIA_PLANKS, 4, ['L'], { L: B.ACACIA_LOG });
@@ -542,11 +588,12 @@ export function getDrops(id, meta, tool, rand = Math.random) {
     case B.REDSTONE_ORE: return one(I.REDSTONE, ri(rand, 4, 5));
     case B.LAPIS_ORE: return one(I.LAPIS, ri(rand, 4, 8));
     case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES:
-    case B.POPLAR_LEAVES_RED: case B.POPLAR_LEAVES_ORANGE: case B.POPLAR_LEAVES_YELLOW: {
+    case B.POPLAR_LEAVES_RED: case B.POPLAR_LEAVES_ORANGE: case B.POPLAR_LEAVES_YELLOW: case B.PALE_OAK_LEAVES: {
       if (shears) return one(id);
       const out = [];
       const sap = (id === B.LEAVES || id >= B.POPLAR_LEAVES_RED && id <= B.POPLAR_LEAVES_YELLOW) ? (id === B.LEAVES ? B.SAPLING : B.POPLAR_SAPLING)
-        : id === B.BIRCH_LEAVES ? B.BIRCH_SAPLING : id === B.SPRUCE_LEAVES ? B.SPRUCE_SAPLING : id === B.ACACIA_LEAVES ? B.ACACIA_SAPLING : B.JUNGLE_SAPLING;
+        : id === B.BIRCH_LEAVES ? B.BIRCH_SAPLING : id === B.SPRUCE_LEAVES ? B.SPRUCE_SAPLING : id === B.ACACIA_LEAVES ? B.ACACIA_SAPLING
+        : id === B.PALE_OAK_LEAVES ? B.PALE_OAK_SAPLING : B.JUNGLE_SAPLING;
       if (rand() < 0.06) out.push({ id: sap, count: 1 });
       if (id === B.LEAVES && rand() < 0.01) out.push({ id: I.APPLE, count: 1 });
       if (rand() < 0.03) out.push({ id: I.STICK, count: 1 });
@@ -573,7 +620,7 @@ export function getDrops(id, meta, tool, rand = Math.random) {
     case B.TALL_GRASS: return shears ? one(id) : rand() < 0.15 ? one(I.WHEAT_SEEDS) : [];
     case B.DEAD_BUSH: return shears ? one(id) : rand() < 0.7 ? one(I.STICK, ri(rand, 1, 2)) : [];
     case B.GRAVEL: return rand() < 0.1 ? one(I.FLINT) : one(id);
-    case B.GLOWSTONE: return one(id);
+    case B.GLOWSTONE: return one(I.GLOWSTONE_DUST, 4); // vanilla: 4 dust
     case B.BOOKSHELF: return one(I.BOOK, 3);
     case B.CLAY: return one(I.CLAY_BALL, 4);
     case B.SNOW_LAYER: return one(I.SNOWBALL);
@@ -586,6 +633,11 @@ export function getDrops(id, meta, tool, rand = Math.random) {
     case B.COPPER_DOOR: return meta & 8 ? [] : one(B.COPPER_DOOR);
     case B.COPPER_BLOCK: return one(I.COPPER_INGOT, 9); // like other storage blocks in Java
     case B.TRIAL_SPAWNER: case B.VAULT: case B.OMINOUS_VAULT: return []; // not obtainable, as in Java
+    // iteration 5
+    case B.NETHER_BRICKS: return one(I.NETHER_BRICK, 4); // vanilla: 4 nether brick items
+    case B.CREAKING_HEART: { // vanilla: 1-3 resin clumps + 20-24 XP, kills linked creaking
+      return one(B.RESIN_CLUMP, ri(rand, 1, 3));
+    }
   }
   return one(id);
 }
@@ -597,6 +649,7 @@ export function blockXp(id, rand = Math.random) {
     case B.DIAMOND_ORE: return ri(rand, 3, 7);
     case B.LAPIS_ORE: return ri(rand, 2, 5);
     case B.REDSTONE_ORE: return ri(rand, 1, 5);
+    case B.CREAKING_HEART: return ri(rand, 20, 24); // 26.3 creaking heart
   }
   return 0;
 }
@@ -651,6 +704,12 @@ export const CREATIVE = (() => {
   add(B.TUFF, B.TUFF_BRICKS, B.CHISELED_TUFF_BRICKS, B.POLISHED_TUFF, B.CHISELED_TUFF);
   add(B.COPPER_BLOCK, B.CUT_COPPER, B.CHISELED_COPPER, B.OXIDIZED_COPPER, B.OXIDIZED_CUT_COPPER, B.OXIDIZED_CHISELED_COPPER);
   add(B.COPPER_GRATE, B.COPPER_BULB, B.COPPER_DOOR, B.COPPER_TRAPDOOR, B.HEAVY_CORE);
+  // iteration 5: creaking, pale garden, nether structures
+  add(B.PALE_OAK_LOG, B.PALE_OAK_PLANKS, B.PALE_OAK_LEAVES, B.PALE_OAK_SAPLING, B.PALE_OAK_SLAB, B.PALE_OAK_STAIRS);
+  add(B.PALE_MOSS_BLOCK, B.PALE_MOSS_CARPET, B.RESIN_CLUMP, B.BLOCK_OF_RESIN, B.RESIN_BRICKS, B.CREAKING_HEART);
+  add(B.NETHERRACK, B.NETHER_BRICKS, B.CRYING_OBSIDIAN, B.CHISELED_STONE_BRICKS, B.CRACKED_STONE_BRICKS);
+  add(B.DARK_OAK_LOG, B.DARK_OAK_PLANKS, B.DARK_OAK_FENCE, B.DARK_OAK_SLAB, B.DARK_OAK_STAIRS);
+  add(B.PURPUR_BLOCK, B.PURPUR_PILLAR, B.SOUL_LANTERN, B.PURPLE_STAINED_GLASS, B.CHISELED_NETHER_BRICKS);
   for (let i = BMAX; i < nextId; i++) add(i);
   return out;
 })();

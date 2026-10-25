@@ -17,7 +17,7 @@ const DX = [1, -1, 0, 0, 0, 0], DY = [0, 0, 1, -1, 0, 0], DZ = [0, 0, 0, 0, 1, -
 const DOWN = 3;
 const HAS_BE = (id) =>
   id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED) || id === B.FURNACE || id === B.FURNACE_LIT ||
-  id === B.TRIAL_SPAWNER || id === B.VAULT || id === B.OMINOUS_VAULT;
+  id === B.TRIAL_SPAWNER || id === B.VAULT || id === B.OMINOUS_VAULT || id === B.CREAKING_HEART;
 
 // Background workers come from worker.js, or from an inlined source string in single-file builds.
 let workerUrl = null;
@@ -246,7 +246,12 @@ export class World {
     c.modified = true;
     this._markDirty(c, x & 15, z & 15, 2);
     if (old !== id) {
-      if (HAS_BE(old) && !HAS_BE(id)) this.blockEntities.delete(bkey(x, y, z));
+      if (HAS_BE(old) && !HAS_BE(id)) {
+        // 26.3: breaking a creaking heart kills its linked creaking (vanilla)
+        const be = this.blockEntities.get(bkey(x, y, z));
+        if (be && be.type === 'creaking_heart' && be.mob) { be.mob.dead = true; be.mob = null; }
+        this.blockEntities.delete(bkey(x, y, z));
+      }
       this._relight(x, y, z, old, id);
       if ((isLog(old) || isLeaves(old)) && !isLog(id)) this._flagLeaves(x, y, z);
     }
@@ -413,9 +418,50 @@ export class World {
           prof = profs[(h >>> 0) % 13];
         } else prof = GPROFS[profI];
         em.spawnMob('villager', x, ey, z, { modelName: 'villager_' + t + '_' + prof, scale: baby ? 0.5 : 1, persistent: true, extra });
-      } else if (name === 'cow' || name === 'pig' || name === 'sheep' || name === 'cat' || name === 'iron_golem') {
+      } else if (name === 'cow' || name === 'pig' || name === 'sheep' || name === 'cat' || name === 'iron_golem' ||
+        name === 'wolf' || name === 'snow_golem' || name === 'witch') {
         em.spawnMob(name, x, ey, z, { persistent: true });
+      } else if (name === 'chest_loot') {
+        // structure chest: fill its BE with a deterministic loot roll (extra = table id)
+        const be = this.getBlockEntity(ex, ey, ez, true);
+        if (be && be.type === 'chest' && be.items.every((s) => !s)) this._rollChestLoot(be, extra, ex, ez);
       }
+    }
+  }
+  // compact vanilla-style loot tables for structure chests (26.3 iteration 5).
+  // extra: 0=ruined portal, 1=outpost, 2=woodland mansion, 3=igloo, 4=buried treasure
+  _rollChestLoot(be, table, x, z) {
+    // deterministic per chest position + world seed
+    let h = Math.imul(x + 17, 374761393) ^ Math.imul(z + 71, 668265263) ^ Math.imul(this.seed + table * 13, 1442695041);
+    const rnd = () => { h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+    const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+    const add = (id, c) => { if (!id || c <= 0) return; let i = 0; while (c > 0 && i < 27) { const s = be.items[i]; const space = c; if (!s) { be.items[i] = { id, count: Math.min(64, c) }; c = 0; } else if (s.id === id && s.count < 64) { const take = Math.min(space, 64 - s.count); s.count += take; c -= take; } i++; } };
+    switch (table) {
+      case 0: // ruined portal: mostly gold (vanilla table)
+        add(I.GOLD_NUGGET, ri(8, 16)); add(I.GOLD_INGOT, ri(1, 3));
+        if (rnd() < 0.5) add(I.EMERALD, ri(1, 4));
+        if (rnd() < 0.25) add(I.DIAMOND, ri(1, 2));
+        break;
+      case 1: // pillager outpost (vanilla: iron/gold/emeralds, ominous bottles omitted)
+        add(I.IRON_INGOT, ri(1, 3)); add(I.GOLD_INGOT, ri(1, 3));
+        if (rnd() < 0.6) add(I.EMERALD, ri(1, 2));
+        if (rnd() < 0.5) add(I.ARROW, ri(3, 8));
+        break;
+      case 2: // woodland mansion (vanilla: iron, gold, emeralds, diamonds, redstone)
+        add(I.IRON_INGOT, ri(3, 8)); add(I.GOLD_INGOT, ri(2, 5));
+        add(I.EMERALD, ri(1, 3)); add(I.DIAMOND, ri(1, 2));
+        if (rnd() < 0.6) add(I.REDSTONE, ri(5, 15));
+        break;
+      case 3: // igloo (vanilla: guaranteed golden apple, diamonds, iron)
+        add(I.GOLDEN_APPLE, 1); add(I.DIAMOND, ri(1, 3));
+        add(I.IRON_INGOT, ri(2, 5));
+        if (rnd() < 0.6) add(I.EMERALD, ri(1, 2));
+        break;
+      case 4: // buried treasure (vanilla: 2-3 gold stacks + nuggets)
+        add(I.GOLD_INGOT, ri(2, 3) * ri(1, 3) + 1); add(I.GOLD_NUGGET, ri(8, 16));
+        if (rnd() < 0.6) add(I.EMERALD, ri(1, 4));
+        if (rnd() < 0.4) add(I.DIAMOND, ri(1, 2));
+        break;
     }
   }
 
@@ -436,7 +482,7 @@ export class World {
       // pre-create them on chunk load so spawners tick without player contact
       for (let i = 0; i < c.blocks.length; i++) {
         const b = c.blocks[i];
-        if (b === B.TRIAL_SPAWNER || b === B.VAULT || b === B.OMINOUS_VAULT)
+        if (b === B.TRIAL_SPAWNER || b === B.VAULT || b === B.OMINOUS_VAULT || b === B.CREAKING_HEART)
           this.getBlockEntity(m.cx * 16 + ((i >> 11) & 15), i & 127, m.cz * 16 + ((i >> 7) & 15), true);
       }
       // neighbours may have been waiting for this chunk before they can mesh
@@ -681,6 +727,8 @@ export class World {
       if (id === B.CHEST || (id >= B.COPPER_CHEST && id <= B.COPPER_CHEST_OXIDIZED)) be = { type: 'chest', x, y, z, items: new Array(27).fill(null) };
       else if (id === B.FURNACE || id === B.FURNACE_LIT) be = { type: 'furnace', x, y, z, items: [null, null, null], burn: 0, burnMax: 0, cook: 0 };
       else if (id === B.TRIAL_SPAWNER) be = { type: 'trial_spawner', x, y, z, wave: null, cool: 0, tryT: (Math.random() * 20) | 0 };
+      // 26.3 creaking heart: spawns one creaking at night, meta bit0 = awake
+      else if (id === B.CREAKING_HEART) be = { type: 'creaking_heart', x, y, z, mob: null, spawnT: 40 + ((Math.random() * 160) | 0) };
       // vaults remember their opened state in meta bit 0, so a reloaded
       // already-opened vault cannot be looted a second time
       else if (id === B.VAULT || id === B.OMINOUS_VAULT) be = { type: id === B.VAULT ? 'vault' : 'ominous_vault', x, y, z, opened: !!(this.getMeta(x, y, z) & 1) };
@@ -872,6 +920,8 @@ export class World {
     for (const be of this.blockEntities.values()) if (be.type === 'furnace') this._tickFurnace(be);
     // trial spawners (26.3 trial chambers)
     for (const be of this.blockEntities.values()) if (be.type === 'trial_spawner') this._tickTrialSpawner(be);
+    // creaking hearts (26.3 creaking)
+    for (const be of this.blockEntities.values()) if (be.type === 'creaking_heart') this._tickCreakingHeart(be);
   }
   // ---- 26.3 trial spawner -----------------------------------------------------------
   // Meta encodes the chamber's mob type (one per chamber at generation, like Java):
@@ -940,6 +990,39 @@ export class World {
       g.audio.play('pop', be.x + 0.5, be.y + 1, be.z + 0.5, 0.7, 1.3);
     }
   }
+  // ---- 26.3 creaking heart -------------------------------------------------------
+  // Spawns one creaking at night (12600-23400), within 12 blocks, on air.
+  // Meta bit0 = awake (a live creaking). Breaking the block kills the creaking
+  // and drops 1-3 resin clumps + 20-24 XP (handled by items.js). One creaking
+  // per heart at a time; a new one rolls after the previous dies.
+  _tickCreakingHeart(be) {
+    const g = this.host;
+    if (!g || !g.player) return;
+    if (this.getBlock(be.x, be.y, be.z) !== B.CREAKING_HEART) return;
+    // drop a stale link
+    if (be.mob && (be.mob.dead || be.mob.health <= 0)) be.mob = null;
+    const t = this.dayTime;
+    const night = t >= 12600 && t <= 23400;
+    const awake = be.mob != null;
+    if (awake !== !!(this.getMeta(be.x, be.y, be.z) & 1)) this.setMeta(be.x, be.y, be.z, this.getMeta(be.x, be.y, be.z) ^ 1, true);
+    if (!night || awake) return;
+    if (be.spawnT > 0) { be.spawnT--; return; }
+    be.spawnT = 200 + ((Math.random() * 400) | 0); // ~10-30s between attempts
+    if (g.peaceful) return;
+    // find a standable air spot in a ring of 4-12 blocks
+    for (let a = 0; a < 12; a++) {
+      const ang = Math.random() * Math.PI * 2, r = 4 + Math.random() * 8;
+      const ox = be.x + Math.round(Math.cos(ang) * r), oz = be.z + Math.round(Math.sin(ang) * r);
+      if (!this.isLoaded(ox, oz)) continue;
+      let oy = -1;
+      for (let y = be.y + 2; y > be.y - 4; y--) {
+        if (!SOLID[this.getBlock(ox, y, oz)] && !SOLID[this.getBlock(ox, y + 1, oz)] && OPAQUE[this.getBlock(ox, y - 1, oz)]) { oy = y; break; }
+      }
+      if (oy < 0) continue;
+      const e = g.entities.spawnMob('creaking', ox + 0.5, oy, oz + 0.5, { heart: { x: be.x, y: be.y, z: be.z } });
+      if (e) { be.mob = e; g.audio.play('creaking_say', be.x + 0.5, be.y + 1, be.z + 0.5, 0.9, 0.7); break; }
+    }
+  }
   _scheduledTick(x, y, z) {
     const id = this.getBlock(x, y, z);
     if (!id) return;
@@ -970,13 +1053,13 @@ export class World {
         }
         break;
       }
-      case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES:
+      case B.LEAVES: case B.BIRCH_LEAVES: case B.SPRUCE_LEAVES: case B.ACACIA_LEAVES: case B.JUNGLE_LEAVES: case B.PALE_OAK_LEAVES:
         if ((meta & 2) && !(meta & 1)) {
           if (this._leafConnected(x, y, z)) this.setMeta(x, y, z, meta & ~2, false);
           else this.breakNaturally(x, y, z);
         }
         break;
-      case B.SAPLING: case B.BIRCH_SAPLING: case B.SPRUCE_SAPLING: case B.ACACIA_SAPLING: case B.JUNGLE_SAPLING: case B.POPLAR_SAPLING:
+      case B.SAPLING: case B.BIRCH_SAPLING: case B.SPRUCE_SAPLING: case B.ACACIA_SAPLING: case B.JUNGLE_SAPLING: case B.POPLAR_SAPLING: case B.PALE_OAK_SAPLING:
         if (this.getLight(x, y + 1, z) >= 9 && Math.random() < 0.15) {
           if (!(meta & 8)) this.setMeta(x, y, z, meta | 8, false);
           else this.growTree(x, y, z);
@@ -1060,7 +1143,7 @@ export class World {
   }
   growTree(x, y, z) {
     const id = this.getBlock(x, y, z);
-    const type = id === B.BIRCH_SAPLING ? 1 : id === B.SPRUCE_SAPLING ? 2 : id === B.ACACIA_SAPLING ? 3 : id === B.JUNGLE_SAPLING ? 4 : id === B.POPLAR_SAPLING ? 5 : 0;
+    const type = id === B.BIRCH_SAPLING ? 1 : id === B.SPRUCE_SAPLING ? 2 : id === B.ACACIA_SAPLING ? 3 : id === B.JUNGLE_SAPLING ? 4 : id === B.POPLAR_SAPLING ? 5 : id === B.PALE_OAK_SAPLING ? 6 : 0;
     const shape = treeShape(type, Math.random);
     const leafId = type === 5 ? [B.POPLAR_LEAVES_RED, B.POPLAR_LEAVES_ORANGE, B.POPLAR_LEAVES_YELLOW][(Math.random() * 3) | 0] : TREE_LEAVES[type];
     for (const [dx, dy, dz, k] of shape) {
@@ -1072,6 +1155,18 @@ export class World {
       const b = this.getBlock(x + dx, y + dy, z + dz);
       if (k === 0) this.setBlock(x + dx, y + dy, z + dz, TREE_LOG[type]);
       else if (b === 0) this.setBlock(x + dx, y + dy, z + dz, leafId);
+    }
+    if (type === 6) {
+      // pale oak trunks carry resin clumps (26.3); a few, at random heights
+      const h = 4;
+      const n = 1 + ((Math.random() * 3) | 0);
+      for (let i = 0; i < n; i++) {
+        const ry = 2 + ((Math.random() * (h + 1)) | 0);
+        const s = (Math.random() * 4) | 0;
+        const rx = x + [0, 1, 0, -1][s], rz = z + [0, 0, 1, 0][s];
+        if (this.getBlock(x, y + ry, z) === B.PALE_OAK_LOG && this.getBlock(rx, y + ry, rz) === 0)
+          this.setBlock(rx, y + ry, rz, B.RESIN_CLUMP);
+      }
     }
     return true;
   }

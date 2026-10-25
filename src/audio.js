@@ -352,6 +352,49 @@ export class AudioSys {
       case 'spider_hurt': case 'spider_death':
         this.noise(out, t, name === 'spider_death' ? 0.7 : 0.3, { freq: 3000 * p, to: 1500 * p, q: 2, gain: 0.4 });
         break;
+      // 26.3 mobs
+      case 'witch_say':
+        this.tone(out, t, 0.3, { type: 'sawtooth', freq: 620 * p, to: 1000 * p, gain: 0.14, lp: 2400 });
+        this.tone(out, t + 0.14, 0.28, { type: 'sawtooth', freq: 900 * p, to: 1500 * p, gain: 0.1, lp: 2600 });
+        break;
+      case 'witch_hurt':
+        this.tone(out, t, 0.18, { type: 'sawtooth', freq: 320 * p, to: 150 * p, gain: 0.4, lp: 1200 });
+        break;
+      case 'witch_death':
+        this.tone(out, t, 0.45, { type: 'sawtooth', freq: 420 * p, to: 90 * p, gain: 0.38, lp: 1500 });
+        this.tone(out, t + 0.2, 0.4, { freq: 1300 * p, to: 420 * p, gain: 0.12 });
+        break;
+      case 'wolf_say':
+        this.tone(out, t, 0.4, { type: 'sawtooth', freq: 260 * p, to: 560 * p, gain: 0.12, lp: 1800 });
+        this.tone(out, t + 0.38, 0.55, { type: 'sawtooth', freq: 480 * p, to: 200 * p, gain: 0.1, lp: 1600 });
+        break;
+      case 'wolf_hurt':
+        this.tone(out, t, 0.12, { type: 'square', freq: 360 * p, to: 230 * p, gain: 0.28, lp: 2200 });
+        break;
+      case 'wolf_death':
+        this.tone(out, t, 0.28, { type: 'square', freq: 320 * p, to: 120 * p, gain: 0.28, lp: 1500 });
+        break;
+      case 'snow_golem_say':
+        this.noise(out, t, 0.07, { type: 'highpass', freq: 2200, gain: 0.18 });
+        this.tone(out, t, 0.09, { freq: 700 * p, to: 520 * p, gain: 0.14 });
+        break;
+      case 'snow_golem_hurt': case 'snow_golem_death':
+        this.noise(out, t, name === 'snow_golem_death' ? 0.45 : 0.15, { type: 'lowpass', freq: 1100, gain: name === 'snow_golem_death' ? 0.5 : 0.3 });
+        break;
+      case 'creaking_say':
+        for (let i = 0; i < 3; i++) {
+          this.tone(out, t + i * 0.17, 0.15, { type: 'sawtooth', freq: rr(180, 320) * p, to: rr(90, 140) * p, gain: 0.18, lp: 500 });
+          this.noise(out, t + i * 0.17, 0.13, { freq: 240 * p, q: 3, gain: 0.2 });
+        }
+        break;
+      case 'creaking_hurt':
+        this.tone(out, t, 0.14, { type: 'sawtooth', freq: 260 * p, to: 140 * p, gain: 0.3, lp: 700 });
+        this.noise(out, t, 0.1, { freq: 400 * p, q: 2, gain: 0.22 });
+        break;
+      case 'creaking_death':
+        this.tone(out, t, 0.4, { type: 'sawtooth', freq: 300 * p, to: 80 * p, gain: 0.3, lp: 600 });
+        for (let i = 0; i < 4; i++) this.noise(out, t + 0.1 + i * 0.09, 0.06, { freq: rr(800, 1800) * p, q: 4, gain: 0.22 });
+        break;
     }
   }
 

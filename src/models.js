@@ -114,6 +114,77 @@ const SKINS = {
       return samplePx('breeze', px, py) || 0xff808080;
     };
   })(),
+  // 26.3 witch: purple-robed humanoid (remapped 64x32 sheet from the 64x128 2x skin)
+  witch: ({ part, face, x, y }) => {
+    if (part === 'head') return boxStd('witch', 0, 0, 8, 8, 8, face, x, y);
+    if (part === 'body') return boxStd('witch', 16, 16, 8, 12, 4, face, x, y);
+    if (part === 'armR') return boxStd('witch', 40, 16, 4, 12, 4, face, x, y);
+    if (part === 'armL') return boxStd('witch', 40, 16, 4, 12, 4, face, x, y, true);
+    if (part === 'legR') return boxStd('witch', 0, 16, 4, 12, 4, face, x, y);
+    return boxStd('witch', 0, 16, 4, 12, 4, face, x, y, true);
+  },
+  // 26.3 wolf: quadruped with snout + tail, raw vanilla 64x32 sheet. Each box
+  // face is stretched over a source rect (the sheet's UVs don't follow the
+  // boxStd layout). Source rects measured from the 26.3 wolf texture.
+  wolf: (() => {
+    const reg = {
+      headF: [0, 4, 12, 8], headB: [12, 4, 8, 8], headS: [4, 0, 12, 4],
+      snoutF: [0, 10, 8, 3], snoutT: [4, 0, 8, 2], snoutS: [12, 6, 4, 4],
+      bodyF: [36, 0, 12, 6], bodyB: [24, 0, 12, 6], bodyT: [24, 0, 24, 4], bodyS: [24, 10, 12, 4],
+      leg0: [0, 20, 8, 4], leg1: [9, 20, 8, 4], leg2: [17, 20, 8, 4], leg3: [26, 20, 8, 4],
+      tail: [34, 14, 6, 6],
+    };
+    const stretch = (sheet, [sx, sy, sw, sh], w, h, x, y) => {
+      const px = sx + Math.min(sw - 1, Math.floor((x / Math.max(1, w)) * sw));
+      const py = sy + Math.min(sh - 1, Math.floor((y / Math.max(1, h)) * sh));
+      return samplePx(sheet, px, py) || 0xff808080;
+    };
+    return ({ part, box, face, x, y, w, h }) => {
+      const sh = 'wolf';
+      if (part === 'head') {
+        if (face === 3) return stretch(sh, reg.headF, w, h, x, y);
+        if (face === 2) return stretch(sh, reg.headB, w, h, x, y);
+        if (face === 0) return stretch(sh, reg.headS, w, h, x, y);
+        return stretch(sh, reg.headS, w, h, face === 4 ? w - 1 - x : x, face === 1 ? h - 1 - y : y);
+      }
+      if (part === 'snout') {
+        if (face === 3) return stretch(sh, reg.snoutF, w, h, x, y);
+        if (face === 0) return stretch(sh, reg.snoutT, w, h, x, y);
+        if (face === 1) return stretch(sh, reg.snoutT, w, h, x, h - 1 - y);
+        return stretch(sh, reg.snoutS, w, h, x, y);
+      }
+      if (part === 'body') {
+        if (face === 3) return stretch(sh, reg.bodyF, w, h, x, y);
+        if (face === 2) return stretch(sh, reg.bodyB, w, h, x, y);
+        if (face === 0) return stretch(sh, reg.bodyT, w, h, x, y);
+        if (face === 1) return stretch(sh, reg.bodyT, w, h, x, h - 1 - y);
+        return stretch(sh, reg.bodyS, w, h, x, y);
+      }
+      if (part === 'tail') return stretch(sh, reg.tail, w, h, x, y);
+      const r = reg['leg' + part.slice(3)];
+      if (face === 0 || face === 1) return stretch(sh, r, w, h, x, face === 1 ? h - 1 - y : y);
+      return stretch(sh, r, w, h, x, y);
+    };
+  })(),
+  // 26.3 snow golem: two snowballs + head with coal face + stick arms
+  snow_golem: ({ part, face, x, y }) => {
+    if (part === 'head') return boxStd('snow_golem', 0, 0, 8, 8, 8, face, x, y);
+    if (part === 'body') return boxStd('snow_golem', 16, 16, 8, 12, 4, face, x, y);
+    if (part === 'armR') return boxStd('snow_golem', 40, 16, 4, 12, 4, face, x, y);
+    if (part === 'armL') return boxStd('snow_golem', 40, 16, 4, 12, 4, face, x, y, true);
+    if (part === 'legR') return boxStd('snow_golem', 0, 16, 4, 12, 4, face, x, y);
+    return boxStd('snow_golem', 0, 16, 4, 12, 4, face, x, y, true);
+  },
+  // 26.3 creaking: big wooden head (eyes composited into the front face),
+  // slab body, branchy arms
+  creaking: ({ part, face, x, y }) => {
+    if (part === 'head') return boxStd('creaking', 0, 0, 8, 8, 8, face, x, y);
+    if (part === 'body') return boxStd('creaking', 16, 16, 8, 12, 4, face, x, y);
+    if (part === 'armR') return boxStd('creaking', 40, 16, 4, 12, 4, face, x, y);
+    if (part === 'armL') return boxStd('creaking', 40, 16, 4, 12, 4, face, x, y, true);
+    if (part === 'legR') return boxStd('creaking', 0, 16, 4, 12, 4, face, x, y);
+    return boxStd('creaking', 0, 16, 4, 12, 4, face, x, y, true);
+  },
   skeleton: ({ part, face, x, y }) => {
     if (part === 'head') return boxStd('skeleton', 0, 0, 8, 8, 8, face, x, y);
     if (part === 'body') return boxStd('skeleton', 16, 16, 8, 12, 4, face, x, y);
@@ -164,6 +235,8 @@ const SKINS = {
     if (box === 1) return samplePx('arrow', 1 + (x & 1), 2);
     return samplePx('arrow', 13, 1 + (y & 1));
   },
+  // 26.3 splash bottle: flat coloured (no sheet in the atlas) — cork + purple liquid
+  potion: ({ box }) => (box === 1 ? 0x8a6a3fff : 0x6a2fc9d0),
   // first-person arm: built upside down (hand at +y), so flip y and swap top/bottom faces
   arm1p: ({ face, x, y, h, tag }) => {
     const f = face === 2 ? 3 : face === 3 ? 2 : face;
@@ -316,6 +389,41 @@ const DEFS = {
       { name: 'foot1', pivot: [0, 0, 0], boxes: [box([0, 0, -1], [4, 4, 4])] },
     ],
   },
+  // 26.3 witch: standard 4-limb biped
+  witch: { skin: 'witch', parts: bipedParts(4) },
+  // 26.3 wolf: 6-wide/6-tall/16-long body, 8x8x8 head + snout, 4 legs, tail
+  wolf: {
+    skin: 'wolf',
+    parts: [
+      { name: 'body', pivot: [0, 0, 0], boxes: [box([-3, 12, -8], [6, 6, 16])] },
+      { name: 'head', pivot: [0, 19, 8], boxes: [box([-4, -4, -2], [8, 8, 8])], },
+      { name: 'snout', pivot: [0, 19, 8], boxes: [box([-2.5, -1, 6], [5, 3, 4])] },
+      quadLeg('leg0', -2, -6, 12), quadLeg('leg1', 2, -6, 12), quadLeg('leg2', -2, 5, 12), quadLeg('leg3', 2, 5, 12),
+      { name: 'tail', pivot: [0, 17, -8], boxes: [box([-1, -2, -4], [2, 2, 5])] },
+    ],
+  },
+  // 26.3 snow golem: lower/upper snowball + head, stick arms, stub legs
+  snow_golem: {
+    skin: 'snow_golem',
+    parts: [
+      { name: 'head', pivot: [0, 22, 0], boxes: [box([-3, -3, -3], [6, 6, 6])] },
+      { name: 'body', pivot: [0, 0, 0], boxes: [box([-3, 12, -3], [6, 6, 6]), box([-4, 6, -4], [8, 6, 8])] },
+      { name: 'armR', pivot: [-4.5, 15, 0], boxes: [box([-0.5, -6, -0.5], [1, 6, 1])] },
+      { name: 'armL', pivot: [4.5, 15, 0], boxes: [box([-0.5, -6, -0.5], [1, 6, 1])] },
+      quadLeg('legR', -2, 0, 6), quadLeg('legL', 2, 0, 6),
+    ],
+  },
+  // 26.3 creaking: 8x8x8 wooden head, slab body, long branch arms, stub legs
+  creaking: {
+    skin: 'creaking',
+    parts: [
+      { name: 'head', pivot: [0, 22, 0], boxes: [box([-4, -4, -4], [8, 8, 8])] },
+      { name: 'body', pivot: [0, 0, 0], boxes: [box([-4, 12, -2], [8, 10, 4])] },
+      { name: 'armR', pivot: [-5.5, 21, 0], boxes: [box([-1.5, -11, -1], [3, 12, 2])] },
+      { name: 'armL', pivot: [5.5, 21, 0], boxes: [box([-1.5, -11, -1], [3, 12, 2])] },
+      quadLeg('legR', -2.5, 0, 12), quadLeg('legL', 2.5, 0, 12),
+    ],
+  },
   creeper: {
     skin: 'creeper',
     parts: [
@@ -384,6 +492,11 @@ const DEFS = {
   arrow: {
     skin: 'arrow',
     parts: [{ name: 'shaft', pivot: [0, 0, 0], boxes: [box([-0.5, -0.5, -8], [1, 1, 10]), box([-1, -1, 2], [2, 2, 2]), box([-1.5, -0.25, -8], [3, 0.5, 3])] }],
+  },
+  // 26.3 witch's splash bottle (in-flight projectile)
+  potion: {
+    skin: 'potion',
+    parts: [{ name: 'bottle', pivot: [0, 0, 0], boxes: [box([-1.5, -3, -1.5], [3, 5, 3]), box([-1, -4.5, -1], [2, 1.5, 2])] }],
   },
   iron_golem: {
     skin: 'iron_golem',
@@ -531,6 +644,33 @@ export class Models {
         pose.leg0 = [a * 1.4 * am, 0, 0]; pose.leg1 = [b * 1.4 * am, 0, 0];
         pose.leg2 = [b * 1.4 * am, 0, 0]; pose.leg3 = [a * 1.4 * am, 0, 0];
         break;
+      case 'witch': {
+        pose.legR = [a * 1.4 * am, 0, 0];
+        pose.legL = [b * 1.4 * am, 0, 0];
+        // one arm raised holding a brewing potion, the other trailing
+        const atk = e.attackAnim > 0 ? Math.sin(((e.attackAnim - alpha) / 6) * PI) * 0.7 : 0;
+        pose.armR = [-PI / 2 + 0.3 - atk, 0.15, 0];
+        pose.armL = [-PI / 2 - 0.3 + atk, -0.15, 0];
+        break;
+      }
+      case 'wolf':
+        pose.leg0 = [a * 1.4 * am, 0, 0]; pose.leg1 = [b * 1.4 * am, 0, 0];
+        pose.leg2 = [b * 1.4 * am, 0, 0]; pose.leg3 = [a * 1.4 * am, 0, 0];
+        pose.tail = [Math.sin((e.age + alpha) * 0.12) * 0.3, 0, 0];
+        break;
+      case 'snow_golem':
+        pose.legR = [a * 1.0 * am, 0, 0]; pose.legL = [b * 1.0 * am, 0, 0];
+        pose.armR = [0, 0, 0.4]; pose.armL = [0, 0, -0.4];
+        break;
+      case 'creaking': {
+        // lurching sway: arms drag, body rocks
+        const t = (e.age + alpha) * 0.9;
+        pose.armR = [0.25 + Math.sin(t) * 0.22, 0, -0.18];
+        pose.armL = [0.25 - Math.sin(t) * 0.22, 0, 0.18];
+        pose.body = [Math.sin(t) * 0.05, 0, Math.sin(t * 0.5) * 0.08];
+        pose.legR = [a * 0.8 * am, 0, 0]; pose.legL = [b * 0.8 * am, 0, 0];
+        break;
+      }
       case 'creeper': case 'pig': case 'cow': case 'sheep':
         pose.leg0 = [a * 1.4 * am, 0, 0]; pose.leg1 = [b * 1.4 * am, 0, 0];
         pose.leg2 = [b * 1.4 * am, 0, 0]; pose.leg3 = [a * 1.4 * am, 0, 0];

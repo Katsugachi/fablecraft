@@ -324,6 +324,15 @@ export const MOBS = {
   // wind charges (1 HP + knockback burst) and deflects arrows. Immune to fall
   // damage (mobs in fablecraft take no fall damage) and sunlight.
   breeze: { w: 0.6, h: 1.77, hp: 30, speed: 0.3, hostile: true, dmg: 1, drops: [[I.BREEZE_ROD, 1, 2]], xp: 10, skin: 'breeze' },
+  // 26.3 creaking update: hostile witch (26 HP, splash harming max 6 HP, self-heals),
+  // tameable wolf (8 HP, 1/3 bone taming), harmless snow golem (10 HP) and the
+  // creaking — a wide low mob linked to a creaking heart, frozen while observed.
+  witch: { w: 0.6, h: 1.95, hp: 26, speed: 0.25, hostile: true, dmg: 6, burns: true, xp: 5, skin: 'witch' },
+  wolf: { w: 0.6, h: 0.85, hp: 8, speed: 0.3, neutral: true, dmg: 3, xp: 0, skin: 'wolf', panic: 1.5 },
+  snow_golem: { w: 0.7, h: 1.25, hp: 10, speed: 0.18, xp: 0, skin: 'snow_golem', panic: 1.2 },
+  // vanilla hitbox is 2.7 x 0.9 (wide, low); fablecraft's creaking model is a
+  // lanky humanoid skeleton, so the box is fitted to the model (documented)
+  creaking: { w: 1.0, h: 1.35, hp: 14, speed: 0.2, hostile: true, dmg: 3, xp: 0, skin: 'creaking' },
 };
 
 export class Mob extends Living {
@@ -751,6 +760,413 @@ export class Breeze extends Mob {
   }
 }
 
+// ---- 26.3 witch's splash potion ------------------------------------------------------------------
+// Travels like an arrow; on impact (entity or block) it bursts, dealing up to
+// 6 HP (vanilla Splash Potion of Harming II maximum) to everything within
+// 4.5 blocks. Poison/weakness effects have no fablecraft effect system — the
+// burst damage is the documented approximation.
+export class SplashPotion extends Entity {
+  constructor(world, x, y, z, vx, vy, vz, owner) {
+    super(world, x, y, z);
+    this.kind = 'potion';
+    this.w = 0.3; this.h = 0.3;
+    this.vx = vx; this.vy = vy; this.vz = vz;
+    this.owner = owner;
+    this.pyaw = this.yaw; this.ppitch = this.pitch;
+  }
+  _burst(game) {
+    const w = this.world, g = game, R = 4.5;
+    const hitE = (e, d2) => {
+      if (e === this.owner || !e.alive) return;
+      const d = Math.sqrt(d2);
+      const dmg = Math.max(1, Math.ceil(6 * (1 - (d / R) * 0.6))); // falls off toward the edge
+      e.hurt(dmg, this.owner || this);
+      for (let i = 0; i < 4; i++) g.particles.spawn('p_splash', e.x + (rnd() - 0.5) * e.w, e.y + rnd() * e.h, e.z + (rnd() - 0.5) * e.w, 0, 0.05, 0, 6, 0.12, { bright: true });
+    };
+    for (const e of g.entities.list) {
+      if (!(e instanceof Living)) continue;
+      const d2 = this.dist2(e.x, e.y + e.h / 2, e.z);
+      if (d2 < R * R) hitE(e, d2);
+    }
+    const p = g.player;
+    const pd2 = this.dist2(p.x, p.y + p.eyeH, p.z);
+    if (p.alive && pd2 < R * R) hitE(p, pd2);
+  }
+  tick(game) {
+    this.savePrev();
+    this.age++;
+    const speed = Math.hypot(this.vx, this.vy, this.vz);
+    const dx = this.vx / speed, dy = this.vy / speed, dz = this.vz / speed;
+    let hit = this.world.raycast(this.x, this.y, this.z, dx, dy, dz, speed);
+    let maxT = hit ? hit.dist : speed;
+    for (const e of game.entities.list) {
+      if (!(e instanceof Living) || !e.alive || e === this.owner) continue;
+      const t = rayEntity(this.x, this.y, this.z, dx, dy, dz, e, 0.35);
+      if (t !== null && t < maxT) maxT = t;
+    }
+    const p = game.player;
+    if (p.alive && p.mode !== 'creative' && this.owner !== p) {
+      const t = rayEntity(this.x, this.y, this.z, dx, dy, dz, p, 0.35);
+      if (t !== null && t < maxT) maxT = t;
+    }
+    if (maxT < speed) {
+      this.x += dx * maxT; this.y += dy * maxT; this.z += dz * maxT;
+      this._burst(game);
+      this.dead = true;
+      return;
+    }
+    this.x += this.vx; this.y += this.vy; this.z += this.vz;
+    this.vx *= 0.99; this.vy *= 0.99; this.vz *= 0.99;
+    this.vy -= 0.05;
+    if (this.age % 2 === 0) game.particles.spawn('p_splash', this.x, this.y, this.z, 0, 0, 0, 2, 0.08, { bright: true });
+    if (this.y < -20 || this.age > 600) this.dead = true;
+  }
+}
+
+// ---- 26.3 witch ------------------------------------------------------------------------------------
+// Hostile: aggro 16 blocks, kites at 4-12, throws a harming splash potion
+// (max 6 HP, 4.5 radius) every ~2s with line of sight. When damaged at low
+// health it "drinks" a healing potion — fablecraft has no potion item system,
+// so the heal is cosmetic (particles + HP over 2s), a documented deviation.
+export class Witch extends Mob {
+  constructor(world, type, x, y, z, opts = null) {
+    super(world, type, x, y, z, opts);
+    this.healAnim = 0;
+  }
+  tick(game) {
+    this.game = game;
+    this.baseTick();
+    if (this.deathTime > 0) {
+      if (++this.deathTime > 20) {
+        this.dead = true;
+        this._drop(game);
+        game.particles.smoke(this.x, this.y + this.h / 2, this.z, 12, this.w);
+      }
+      this.moveForward = 0;
+      this.travel(0, 0);
+      return;
+    }
+    const d = this.def, p = game.player, w = this.world;
+    if (this.attackCd > 0) this.attackCd--;
+    if (this.attackAnim > 0) this.attackAnim--;
+    this.moveForward = 0;
+
+    // self-heal: triggered the tick after taking damage, when below full health
+    if (this.healAnim > 0) {
+      if (--this.healAnim % 8 === 0 && this.health < this.maxHealth) {
+        this.health++;
+        game.particles.spawn('p_heart', this.x, this.y + this.h * 0.7, this.z, 0, 0.04, 0, 2, 0.1, { bright: true });
+      }
+    } else if (this.hurtTime === 9 && this.health < this.maxHealth && rnd() < 0.25) {
+      this.healAnim = 40;
+      this.eatAnim = 40;
+      game.audio.play('drink', this.x, this.y + 1, this.z, 0.6, 0.9 + rnd() * 0.2);
+    }
+
+    // environment
+    if (this.inLava) this.hurt(4, { type: 'lava' });
+    if (this.fire > 0) {
+      if (this.inWater) this.fire = 0;
+      else {
+        if (this.fire % 20 === 0) this.hurt(1, { type: 'fire' });
+        this.fire--;
+        if (this.age % 3 === 0) game.particles.spawn('p_flame', this.x + (rnd() - 0.5) * this.w, this.y + rnd() * this.h, this.z + (rnd() - 0.5) * this.w, 0, 0.03, 0, 14, 0.12);
+      }
+    }
+    if (d.burns && this.age % 20 === 0 && w.isDay() && !this.inWater && w.canSeeSky(Math.floor(this.x), Math.floor(this.y + this.h), Math.floor(this.z))) this.fire = Math.max(this.fire, 160);
+    if (this.inWater && this.eyeInFluid(1, this.y + this.eyeHeight())) {
+      if (--this.air <= -20) { this.air = 0; this.hurt(2, { type: 'drown' }); }
+    } else this.air = 300;
+
+    const pd2 = this.dist2(p.x, p.y, p.z);
+    const playerOk = p.alive && p.mode !== 'creative' && !game.peaceful;
+    if (playerOk && this.state !== 'chase' && pd2 < 16 * 16 && this._canSee(p)) this.state = 'chase';
+    if (this.state === 'chase' && (!p.alive || pd2 > 32 * 32)) { this.state = 'idle'; this.timer = 40; }
+
+    let jump = false;
+    if (this.state === 'chase' && p.alive) {
+      this._lookAt(p.x, p.y + p.eyeHeight(), p.z);
+      const dist = Math.sqrt(pd2);
+      // kite: back off when close, close in when far (vanilla witches keep distance)
+      if (dist < 4) this._moveTo(this.x * 2 - p.x, this.z * 2 - p.z, 1);
+      else if (dist > 9) this._moveTo(p.x, p.z, 1);
+      else if (this.age % 40 < 20) this.yaw += clamp(wrapAngle(this.headYaw - this.yaw), -0.3, 0.3);
+      // throw the harming potion
+      if (this.attackCd === 0 && dist < 13 && this._canSee(p)) {
+        this.attackCd = 40;
+        this.attackAnim = 8;
+        const ax = this.x, ay = this.y + this.eyeHeight() - 0.1, az = this.z;
+        const dx = p.x - ax, dz = p.z - az, dy = p.y + p.eyeHeight() * 0.7 - ay;
+        const l = Math.hypot(dx, dy, dz) || 1;
+        const sp = 1.2;
+        game.entities.add(new SplashPotion(w, ax, ay, az, (dx / l) * sp, (dy / l) * sp, (dz / l) * sp, this));
+        game.audio.play('bow', this.x, this.y, this.z, 0.7, 0.9 + rnd() * 0.25);
+      }
+      jump = this.collidedH && this.onGround;
+    } else {
+      if (this.state === 'chase') { this.state = 'idle'; this.timer = 40; }
+      this.timer--;
+      if (this.timer <= 0) {
+        if (rnd() < 0.7 && this._pickWander(9)) { this.state = 'walk'; this.timer = ri(60, 160); }
+        else this.timer = ri(40, 120);
+      }
+      if (this.state === 'walk') {
+        const dx = this.tx - this.x, dz = this.tz - this.z;
+        if (dx * dx + dz * dz < 0.8 || this.timer <= 0) { this.state = 'idle'; this.timer = ri(40, 120); }
+        else {
+          this._moveTo(this.tx, this.tz, 0.6);
+          jump = this.collidedH && this.onGround;
+        }
+        this.headYaw += clamp(wrapAngle(this.yaw - this.headYaw), -0.25, 0.25);
+      } else if (pd2 < 49 && (this.age + ((this.x * 7) | 0)) % 200 < 60) {
+        this._lookAt(p.x, p.y + p.eyeHeight(), p.z, 0.2);
+      } else {
+        this.headYaw += clamp(wrapAngle(this.yaw - this.headYaw), -0.1, 0.1);
+        this.pitch *= 0.9;
+      }
+    }
+
+    const hd = wrapAngle(this.headYaw - this.yaw);
+    if (Math.abs(hd) > 1.3) this.headYaw = this.yaw + clamp(hd, -1.3, 1.3);
+    if (this.inWater || this.inLava) { if (rnd() < 0.8) this.vy += 0.04; }
+    else if (jump && this.jumpTicks === 0) { this.jump(); this.jumpTicks = 10; }
+    this.travel(0, this.moveForward);
+
+    if (--this.soundTimer <= 0) {
+      this.soundTimer = ri(160, 500);
+      if (pd2 < 24 * 24) game.audio.play('witch_say', this.x, this.y + this.h / 2, this.z, 0.8, 0.9 + rnd() * 0.2);
+    }
+  }
+  // 26.3 loot: 4-8 redstone (guaranteed since 1.21) plus 1-3 pool rolls
+  // (stick twice as likely; 0-2 items each) — no Looting in fablecraft
+  _drop(game) {
+    if (!this.killedByPlayer) return;
+    game.dropItem(this.x, this.y + 0.4, this.z, I.REDSTONE, ri(4, 8));
+    const pool = [I.GLASS_BOTTLE, I.GLOWSTONE_DUST, I.GUNPOWDER, I.SPIDER_EYE, I.SUGAR];
+    const rolls = 1 + (rnd() < 0.7 ? 1 : 0) + (rnd() < 0.3 ? 1 : 0);
+    for (let i = 0; i < rolls; i++) {
+      const id = rnd() < 0.36 ? I.STICK : pool[(rnd() * pool.length) | 0];
+      game.dropItem(this.x, this.y + 0.4, this.z, id, ri(1, 2));
+    }
+    game.player.addXp(this.def.xp || 0);
+  }
+}
+
+// ---- 26.3 wolf -------------------------------------------------------------------------------------
+// Neutral: wanders, panics when hit, occasionally fights nearby hostiles.
+// Tamed: follows the owner, sits nearby, and attacks hostiles that come
+// within 12 blocks of the owner. Taming = right-click with a bone, 1/3 chance
+// (the bone is consumed either way, vanilla). No drops (vanilla).
+export class Wolf extends Mob {
+  constructor(world, type, x, y, z, opts = null) {
+    super(world, type, x, y, z, opts);
+    this.tamed = !!(opts && opts.tamed);
+    this.owner = (opts && opts.owner) || null;
+  }
+  _drop() { /* wolves drop nothing (vanilla) */ }
+  tick(game) {
+    if (this.tamed && this.owner) return this._tamedTick(game);
+    return super.tick(game);
+  }
+  _tamedTick(game) {
+    this.game = game;
+    this.baseTick();
+    if (this.deathTime > 0) {
+      if (++this.deathTime > 20) { this.dead = true; this._drop(game); game.particles.smoke(this.x, this.y + this.h / 2, this.z, 8, this.w); }
+      this.moveForward = 0; this.travel(0, 0);
+      return;
+    }
+    const p = game.player, o = this.owner, w = this.world;
+    if (this.attackCd > 0) this.attackCd--;
+    if (this.attackAnim > 0) this.attackAnim--;
+    this.moveForward = 0;
+    if (this.fire > 0) {
+      if (this.inWater) this.fire = 0;
+      else { if (this.fire % 20 === 0) this.hurt(1, { type: 'fire' }); this.fire--; }
+    }
+    if (this.inWater && this.eyeInFluid(1, this.y + this.eyeHeight())) {
+      if (--this.air <= -20) { this.air = 0; this.hurt(2, { type: 'drown' }); }
+    } else this.air = 300;
+
+    const ownerGone = !o || o.dead || o.health <= 0;
+    if (ownerGone) this._target = null;
+    if (this._target && (this._target.dead || this._target.health <= 0 || this.dist2(this._target.x, this._target.y, this._target.z) > 16 * 16)) this._target = null;
+
+    let jump = false;
+    if (!ownerGone) {
+      // acquire: nearest hostile mob within 12 blocks of the owner, or the
+      // source that hurt the owner (tracked via owner.hurtTime)
+      if (!this._target) {
+        if (o.hurtTime > 0) {
+          let bd = 20 * 20;
+          for (const e of game.entities.list) {
+            if (e.kind !== 'mob' || !e.def.hostile || !e.alive) continue;
+            const d2 = this.dist2(e.x, e.y, e.z);
+            if (d2 < bd) { bd = d2; this._target = e; }
+          }
+        } else {
+          let bd = 12 * 12;
+          for (const e of game.entities.list) {
+            if (e.kind !== 'mob' || !e.def.hostile || !e.alive) continue;
+            const d2 = o.dist2(e.x, e.y, e.z);
+            if (d2 < bd) { bd = d2; this._target = e; }
+          }
+        }
+        if (this._target) this.state = 'chase';
+      }
+      if (this.state === 'chase' && this._target) {
+        const tg = this._target;
+        this._lookAt(tg.x, tg.y + (tg.eyeHeight ? tg.eyeHeight() : 1), tg.z);
+        const dist = Math.sqrt(this.dist2(tg.x, tg.y, tg.z));
+        if (dist > 1.2) this._moveTo(tg.x, tg.z, 1);
+        const reach = this.w / 2 + 0.3 + (tg.w || 0.6) / 2 + 0.4;
+        if (this.attackCd === 0 && dist < reach && Math.abs(tg.y - this.y) < 1.2) {
+          this.attackCd = 20;
+          this.attackAnim = 6;
+          tg.hurt(this.def.dmg * game.difficultyScale, this);
+        }
+        jump = this.collidedH && this.onGround;
+      } else {
+        // follow / sit with the owner
+        const od = Math.sqrt(o.dist2(this.x, this.y, this.z));
+        if (od > 2.5) { this._moveTo(o.x, o.z, 1); jump = this.collidedH && this.onGround; this._lookAt(o.x, o.y + o.eyeHeight(), o.z, 0.3); }
+        else {
+          this.state = 'idle';
+          this._lookAt(o.x, o.y + o.eyeHeight(), o.z, 0.25);
+          if (od > 1.2 && this.age % 80 < 40) this._moveTo(o.x - Math.sin(this.yaw) * 1.4, o.z - Math.cos(this.yaw) * 1.4, 0.4);
+        }
+      }
+    } else {
+      // owner gone: wander until despawn
+      this.timer--;
+      if (this.timer <= 0) {
+        if (rnd() < 0.7 && this._pickWander(9)) { this.state = 'walk'; this.timer = ri(60, 160); }
+        else this.timer = ri(40, 120);
+      }
+      if (this.state === 'walk') {
+        const dx = this.tx - this.x, dz = this.tz - this.z;
+        if (dx * dx + dz * dz < 0.8 || this.timer <= 0) { this.state = 'idle'; this.timer = ri(40, 120); }
+        else this._moveTo(this.tx, this.tz, 0.6);
+        this.headYaw += clamp(wrapAngle(this.yaw - this.headYaw), -0.25, 0.25);
+      }
+    }
+
+    const hd = wrapAngle(this.headYaw - this.yaw);
+    if (Math.abs(hd) > 1.3) this.headYaw = this.yaw + clamp(hd, -1.3, 1.3);
+    if (this.inWater || this.inLava) { if (rnd() < 0.8) this.vy += 0.04; }
+    else if (jump && this.jumpTicks === 0) { this.jump(); this.jumpTicks = 10; }
+    this.travel(0, this.moveForward);
+    if (--this.soundTimer <= 0) {
+      this.soundTimer = ri(200, 600);
+      if (o && o.dist2(this.x, this.y, this.z) < 24 * 24) game.audio.play('wolf_say', this.x, this.y + this.h / 2, this.z, 0.6, 0.9 + rnd() * 0.2);
+    }
+  }
+}
+
+// ---- 26.3 creaking -----------------------------------------------------------------------------------
+// Spawned by a creaking heart at night (one per heart). Immovable and
+// knockback-immune while a player looks at it (vanilla "observed"), melee
+// only, no drops, fire-immune while linked to its heart, despawns at dawn and
+// dies instantly when the heart is broken. Alert radius 12 blocks, active
+// radius 32 blocks around the heart.
+export class Creaking extends Mob {
+  constructor(world, type, x, y, z, opts = null) {
+    super(world, type, x, y, z, opts);
+    this.heart = (opts && opts.heart) || null; // {x, y, z} block coords
+    this.observed = false;
+    this.alerted = false;
+    this.hx = this.heart ? this.heart.x + 0.5 : x;
+    this.hz = this.heart ? this.heart.z + 0.5 : z;
+  }
+  _drop() { /* creakings drop nothing (vanilla) */ }
+  // immune to knockback while observed (vanilla)
+  knockback() { if (!this.observed) return; }
+  tick(game) {
+    this.game = game;
+    // linked to a heart that vanished (broken/moved): die silently, no drops
+    if (this.heart && this.world.getBlock(this.heart.x, this.heart.y, this.heart.z) !== B.CREAKING_HEART) {
+      this.dead = true;
+      return;
+    }
+    // despawn at dawn (vanilla: creakings vanish with the night)
+    const t = this.world.dayTime;
+    if (t < 12600 || t > 23400) { this.dead = true; return; }
+    this.baseTick();
+    if (this.deathTime > 0) {
+      if (++this.deathTime > 20) { this.dead = true; this._drop(game); game.particles.smoke(this.x, this.y + this.h / 2, this.z, 10, this.w); }
+      this.moveForward = 0; this.travel(0, 0);
+      return;
+    }
+    const d = this.def, p = game.player, w = this.world;
+    if (this.attackCd > 0) this.attackCd--;
+    if (this.attackAnim > 0) this.attackAnim--;
+    this.moveForward = 0;
+    // fire immune while linked to its heart (vanilla)
+    this.fire = 0;
+    if (this.inWater && this.eyeInFluid(1, this.y + this.eyeHeight())) {
+      if (--this.air <= -20) { this.air = 0; this.hurt(2, { type: 'drown' }); }
+    } else this.air = 300;
+
+    const pd2 = this.dist2(p.x, p.y, p.z);
+    this.observed = p.alive && pd2 < 24 * 24 && this._canSee(p);
+    if (this.observed) {
+      // frozen in place, facing the observer (vanilla: cannot move while seen)
+      this.vx = this.vy = this.vz = 0;
+      this._lookAt(p.x, p.y + p.eyeHeight(), p.z, 0.4);
+      this.travel(0, 0);
+      return;
+    }
+    // re-enables gravity after being frozen (vy was zeroed)
+    this.vy = Math.min(this.vy, -0.01);
+
+    const dist = Math.sqrt(pd2);
+    const canSee = p.alive && this._canSee(p);
+    if (p.alive && pd2 < 12 * 12 && canSee) {
+      // alert: 12 blocks (vanilla)
+      if (!this.alerted) { this.alerted = true; game.audio.play('creaking_say', this.x, this.y + this.h / 2, this.z, 1, 0.8); }
+      this.state = 'chase';
+      this._lookAt(p.x, p.y + p.eyeHeight(), p.z);
+      this._moveTo(p.x, p.z, 1);
+      const reach = this.w / 2 + 0.4 + p.w / 2 + 0.4;
+      if (this.attackCd === 0 && dist < reach && Math.abs(p.y - this.y) < 1.4) {
+        this.attackCd = 25;
+        this.attackAnim = 6;
+        p.hurt(d.dmg * game.difficultyScale, this);
+      }
+    } else {
+      if (this.state === 'chase') { this.state = 'idle'; this.timer = 40; }
+      // return to / wander around the heart, never beyond 32 blocks (vanilla)
+      const hd2 = (this.x - this.hx) ** 2 + (this.z - this.hz) ** 2;
+      if (hd2 > 32 * 32) {
+        this._moveTo(this.hx, this.hz, 1);
+      } else {
+        this.timer--;
+        if (this.timer <= 0) {
+          const a = rnd() * Math.PI * 2, r = 4 + rnd() * 10;
+          this.tx = this.hx + Math.cos(a) * r; this.tz = this.hz + Math.sin(a) * r;
+          this.state = 'walk';
+          this.timer = ri(80, 200);
+        }
+        if (this.state === 'walk') {
+          const dx = this.tx - this.x, dz = this.tz - this.z;
+          if (dx * dx + dz * dz < 0.8 || this.timer <= 0) { this.state = 'idle'; this.timer = ri(30, 100); }
+          else this._moveTo(this.tx, this.tz, 0.55);
+        }
+      }
+      this.headYaw += clamp(wrapAngle(this.yaw - this.headYaw), -0.2, 0.2);
+      this.pitch *= 0.9;
+    }
+
+    if (this.inWater || this.inLava) { if (rnd() < 0.8) this.vy += 0.04; }
+    else if (this.collidedH && this.onGround && this.state !== 'idle') { this.jump(); this.jumpTicks = 10; }
+    this.travel(0, this.moveForward);
+    if (--this.soundTimer <= 0) {
+      this.soundTimer = ri(240, 700);
+      if (pd2 < 24 * 24) game.audio.play('creaking_say', this.x, this.y + this.h / 2, this.z, 0.7, 0.85 + rnd() * 0.3);
+    }
+  }
+}
+
 // ---- manager -------------------------------------------------------------------------------------
 export class EntityManager {
   constructor(game) {
@@ -768,7 +1184,7 @@ export class EntityManager {
     this.list.length = 0;
   }
   spawnMob(type, x, y, z, opts = null) {
-    const C = type === 'breeze' ? Breeze : Mob;
+    const C = type === 'breeze' ? Breeze : type === 'witch' ? Witch : type === 'wolf' ? Wolf : type === 'creaking' ? Creaking : Mob;
     const m = new C(this.game.world, type, x, y, z, opts);
     m.game = this.game;
     return this.add(m);
@@ -813,8 +1229,9 @@ export class EntityManager {
         if (y < 0 || w.getLight(x, y, z) > 7) continue;
         if ((w.getLightRaw(x, y, z) & 15) > 3) continue;
         const k = rnd();
-        const type = k < 0.4 ? 'zombie' : k < 0.65 ? 'skeleton' : k < 0.85 ? 'creeper' : 'spider';
-        const n = type === 'zombie' ? ri(1, 3) : type === 'skeleton' ? ri(1, 2) : 1;
+        // 26.3: witches join the night monster pool (~12%, vanilla weight)
+        const type = k < 0.36 ? 'zombie' : k < 0.60 ? 'skeleton' : k < 0.78 ? 'creeper' : k < 0.88 ? 'spider' : 'witch';
+        const n = type === 'zombie' ? ri(1, 3) : (type === 'skeleton' || type === 'witch') ? ri(1, 2) : 1;
         for (let i = 0; i < n; i++) {
           const sx = x + ri(-2, 2), sz = z + ri(-2, 2), sy = this._findSpot(sx, y, sz);
           if (sy >= 0 && w.getLight(sx, sy, sz) <= 7) this.spawnMob(type, sx + 0.5, sy, sz + 0.5);
@@ -830,7 +1247,8 @@ export class EntityManager {
       const y = w.topSolidY(x, z);
       if (w.getBlock(x, y, z) !== B.GRASS || (w.getLightRaw(x, y + 1, z) >> 4) < 12) return;
       const biome = w.gen.biomeAt(x, z);
-      const opts = biome === BIOME.FOREST || biome === BIOME.BIRCH_FOREST ? ['pig', 'chicken', 'cow', 'pig'] : biome === BIOME.TAIGA || biome === BIOME.SNOWY_TAIGA || biome === BIOME.SNOWY_TUNDRA ? ['sheep', 'cow', 'chicken'] : ['sheep', 'cow', 'pig', 'chicken', 'sheep'];
+      // 26.3: wolves in taiga / snowy biomes (rare)
+      const opts = biome === BIOME.FOREST || biome === BIOME.BIRCH_FOREST ? ['pig', 'chicken', 'cow', 'pig'] : biome === BIOME.TAIGA || biome === BIOME.SNOWY_TAIGA || biome === BIOME.SNOWY_TUNDRA ? ['sheep', 'cow', 'chicken', 'wolf'] : ['sheep', 'cow', 'pig', 'chicken', 'sheep'];
       const type = opts[(rnd() * opts.length) | 0];
       const n = ri(2, 4);
       for (let i = 0; i < n; i++) {
@@ -908,6 +1326,14 @@ export class EntityManager {
           m4.rotY(m, m, e.age * 1.2);
           m4.scale(m, m, 0.45, 0.45, 0.45);
           models.draw('arrow', m, {}, lightRGB(raw, r.sun, r.settings.gamma, this.light));
+          break;
+        }
+        case 'potion': {
+          // tumbling splash bottle
+          m4.rotY(m, m, e.age * 0.35);
+          m4.rotX(m, m, e.age * 0.5);
+          m4.scale(m, m, 0.5, 0.5, 0.5);
+          models.draw('potion', m, {}, lightRGB(raw, r.sun, r.settings.gamma, this.light));
           break;
         }
         case 'mob': {

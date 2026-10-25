@@ -641,6 +641,20 @@ export class Player extends Living {
         this._damageTool(1);
         this.swingArm();
       }
+      // 26.3: tame a wolf with a bone — 1/3 chance, the bone is consumed either way
+      if (d && s.id === I.BONE && e.type === 'wolf' && !e.tamed) {
+        this._consumeHeld();
+        if (Math.random() < 1 / 3) {
+          e.tamed = true; e.owner = this; e.angry = false; e._target = null; e.state = 'idle';
+          g.audio.play('pop', e.x, e.y + 1, e.z, 0.7, 1.3);
+          for (let i = 0; i < 6; i++) g.particles.spawn('p_heart', e.x + (rnd() - 0.5) * 0.6, e.y + e.h + rnd() * 0.5, e.z + (rnd() - 0.5) * 0.6, 0, 0.04, 0, 3, 0.12, { bright: true });
+          g.chat('The wolf tamed you!');
+        } else {
+          g.audio.play('pop', e.x, e.y + 1, e.z, 0.4, 0.6);
+          g.particles.smoke(e.x, e.y + e.h, e.z, 3, 0.3);
+        }
+        this.swingArm();
+      }
       return;
     }
     if (!s) return;

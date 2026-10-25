@@ -868,4 +868,469 @@ export function stampTrials(cx, cz, seed, gen, blocks, meta) {
   return out;
 }
 
-export { GENTS, GPROFS };
+// ============================================================================
+// 26.3 COMMON STRUCTURES (Wilderness Bound) — iteration 5
+// ============================================================================
+// Ruined portals, pillager outposts, woodland mansions, igloos and buried
+// treasure, placed with the same RandomSpreadPlacement machinery as villages
+// and camps (region -> java.util.Random -> start chunk, spacing/separation
+// per structure). Spacing values follow the 26.3 vanilla placement; the salt
+// constants are fablecraft-assigned (villages use the real vanilla salt).
+//
+// Each build function is deterministic per (seed, region) and returns
+// { cells, bounds, ents } in world coordinates; the stamp* functions write the
+// cells that fall inside the chunk being generated and return the ents.
+//
+// Documented deviations:
+//   * chest loot uses a compact subset of the vanilla loot tables (counts
+//     taken from the wiki tables), no enchanted books / ominous bottles.
+//   * mansions and outposts are procedural approximations of the jigsaw
+//     builds (same footprint, materials, furniture and ent placement).
+//   * structure block-entity state (chest contents) is persisted in chunk
+//     saves only when the chest is inside a generated chunk's BE set; chests
+//     placed here create their BE on first player access, so looted state is
+//     not remembered across saves (same as trial vaults).
+
+const SC = {}; // per-structure caches: SC[portals] etc.
+SC.portals = new Map(); SC.outposts = new Map(); SC.mansions = new Map(); SC.igloos = new Map(); SC.treasures = new Map();
+
+// One structure per spacing x spacing region. The home chunk is kept `margin`
+// chunks away from every region edge: a structure is anchored on the home
+// chunk's corner and always spills into the two adjacent chunks, so a margin
+// of at least 1 keeps the whole footprint inside one region (no clipping);
+// larger margins also keep structures of neighbouring regions apart.
+function scStartChunk(cache, cx, cz, seed, spacing, margin, salt) {
+  const rx = Math.floor(cx / spacing), rz = Math.floor(cz / spacing);
+  const r = spreadRand(rx, rz, seed, salt);
+  const b = spacing - 2 * margin;
+  return [rx * spacing + margin + r.nextInt(b), rz * spacing + margin + r.nextInt(b)];
+}
+
+// world-coordinate cell writer with bounds tracking
+function scPut(cells, bounds, x, y, z, id, meta = 0) {
+  if (y < 0 || y >= WH) return;
+  cells.push([x, y, z, id, meta]);
+  if (x < bounds[0]) bounds[0] = x;
+  if (y < bounds[1]) bounds[1] = y;
+  if (z < bounds[2]) bounds[2] = z;
+  if (x > bounds[3]) bounds[3] = x;
+  if (y > bounds[4]) bounds[4] = y;
+  if (z > bounds[5]) bounds[5] = z;
+}
+
+// generic stamp: writes cached cells into the chunk, returns ents
+function scStamp(cache, cx, cz, seed, gen, blocks, meta, build, spacing, separation, salt, biomes) {
+  const out = [];
+  const x0 = cx * CH, z0 = cz * CH;
+  const [scx, scz] = scStartChunk(cache, cx, cz, seed, spacing, separation, salt);
+  const ck = seed + ':' + scx + ',' + scz;
+  let s = cache.get(ck);
+  if (s === undefined) {
+    try {
+      const wx = scx * CH, wz = scz * CH;
+      // biome gate samples the build anchor (same point the builder measures height from)
+      if (biomes && !biomes.has(gen.biomeAt(wx, wz))) s = null;
+      else s = build(scx * CH, scz * CH, seed, gen);
+    } catch (e) { s = null; }
+    if (cache.size > 128) cache.clear();
+    cache.set(ck, s);
+  }
+  if (!s) return out;
+  const b = s.bounds;
+  if (b[0] > x0 + CH - 1 || b[3] < x0 || b[2] > z0 + CH - 1 || b[5] < z0) return out;
+  for (const [wx, wy, wz, id, mt] of s.cells) {
+    const dxw = wx - x0, dzw = wz - z0;
+    if (dxw < 0 || dxw >= CH || dzw < 0 || dzw >= CH || wy < 0 || wy >= WH) continue;
+    blocks[(dxw << 11) | (dzw << 7) | wy] = id;
+    meta[(dxw << 11) | (dzw << 7) | wy] = mt;
+  }
+  // ents are emitted exactly once, from the anchor chunk (the structure is
+  // centred on its corner, so the anchor chunk always intersects the bounds)
+  if (cx !== scx || cz !== scz) return out;
+  return s.ents || [];
+}
+
+// ============================================================================
+// RUINED PORTALS — 13 vanilla variants; here 6 distinct frame layouts chosen
+// by the vanilla variant roll, biome-matched materials (stone brick / sandstone
+// / mossy), 11-13 obsidian (15% crying), rubble, netherrack, lava pool, gold.
+// ============================================================================
+const PORTAL_SPACING = 32, PORTAL_MARGIN = 4, PORTAL_SALT = 441186252; // margin >= netherrack scatter half-width (4)
+
+function buildPortal(wx, wz, seed, gen) {
+  const r = new JRand(0);
+  r.setLargeFeatureSeed(seed, wx, wz);
+  const frand = () => r.next(30) / 1073741824;
+  const cells = [];
+  const bounds = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+  const ents = [];
+  const variant = r.nextInt(13); // vanilla variant roll
+  const H = (x, z) => { const hh = gen.heightAt(x, z); return hh >= SEA ? hh : SEA - 1; };
+  const h = H(wx, wz);
+  if (gen.heightAt(wx, wz) < SEA) return { cells, bounds, ents }; // land only (vanilla)
+  const biome = gen.biomeAt(wx, wz);
+  // biome-matched materials (vanilla: desert->sandstone, swamp/dappled->mossy stone)
+  const rubble = biome === 8 ? B.SANDSTONE : (biome === 10 || biome === 14) ? B.MOSSY_STONE_BRICKS : B.STONE_BRICKS;
+  const alongX = r.next(1) === 0; // ring plane: X-Y (faces ±Z) or Z-Y (faces ±X)
+  const PX = (lx) => (alongX ? wx + lx : wx);
+  const PZ = (lx) => (alongX ? wz : wz + lx);
+  // 4x5 obsidian ring, local columns lx -2..1, rows ly 0..4 (14 boundary cells)
+  const ring = [];
+  for (let lx = -2; lx <= 1; lx++) for (let ly = 0; ly <= 4; ly++)
+    if (lx === -2 || lx === 1 || ly === 0 || ly === 4) ring.push([lx, ly]);
+  // ruined: remove 1-3 posts (keeps 11-13 of 14, vanilla)
+  for (let i = 0, n = 1 + r.nextInt(3); i < n; i++) ring.splice(r.nextInt(ring.length), 1);
+  for (const [lx, ly] of ring) scPut(cells, bounds, PX(lx), h + ly, PZ(lx), frand() < 0.15 ? B.CRYING_OBSIDIAN : B.OBSIDIAN, 0);
+  // foundation under + around the ring (rubble with random notches)
+  for (let lx = -3; lx <= 2; lx++) for (let lz = -1; lz <= 1; lz++) {
+    if (frand() < 0.3) continue;
+    const x = alongX ? wx + lx : wx + lz, z = alongX ? wz + lz : wz + lx;
+    scPut(cells, bounds, x, h - 1, z, rubble, 0);
+  }
+  // rubble collar, 1-2 high, irregular
+  for (let lx = -3; lx <= 2; lx++) {
+    for (const lz of [-2, 2]) {
+      if (frand() < 0.45) continue;
+      const x = alongX ? wx + lx : wx + lz, z = alongX ? wz + lz : wz + lx;
+      scPut(cells, bounds, x, h, z, rubble, 0);
+      if (frand() < 0.4) scPut(cells, bounds, x, h + 1, z, rubble, 0);
+    }
+  }
+  // netherrack field (vanilla 130-145 blocks; footprint-scaled here)
+  for (let i = 0; i < 16; i++) {
+    const dx = r.nextInt(8) - 4, dz = r.nextInt(8) - 4;
+    scPut(cells, bounds, wx + dx, h - 1, wz + dz, B.NETHERRACK, 0);
+  }
+  // variant features
+  if (variant % 3 === 0) { // lava pool at ground level (2x2)
+    for (let dx = -1; dx <= 0; dx++) for (let dz = -1; dz <= 0; dz++) scPut(cells, bounds, wx + dx, h, wz + dz, B.LAVA, 0);
+  } else if (variant % 3 === 1) { // iron bars remnant above the ring
+    scPut(cells, bounds, PX(-2), h + 5, PZ(-2), B.IRON_BARS, 0);
+    scPut(cells, bounds, PX(1), h + 5, PZ(1), B.IRON_BARS, 0);
+  } else { // broken stairs / slabs
+    for (let i = 0; i < 3; i++)
+      scPut(cells, bounds, wx + r.nextInt(7) - 3, h, wz + r.nextInt(7) - 3, i === 0 ? B.STONE_BRICK_STAIRS : B.STONE_BRICK_SLAB, i === 1 ? 4 : 0);
+  }
+  // chest with gold-heavy loot (vanilla: 1 chest, mostly gold)
+  if (frand() < 0.85) {
+    const chx = wx + r.nextInt(5) - 2, chz = wz + r.nextInt(5) - 2;
+    scPut(cells, bounds, chx, h, chz, B.CHEST, 0);
+    ents.push([13, chx, h, chz, 0]); // table 0 = portal loot
+  }
+  // gold blocks on the surface (vanilla scatter)
+  for (let i = 0; i < 2; i++) if (frand() < 0.7) scPut(cells, bounds, wx + r.nextInt(7) - 3, h, wz + r.nextInt(7) - 3, B.GOLD_BLOCK, 0);
+  return { cells, bounds, ents };
+}
+
+export function stampPortals(cx, cz, seed, gen, blocks, meta) {
+  return scStamp(SC.portals, cx, cz, seed, gen, blocks, meta, (wx, wz, s, g) => buildPortal(wx, wz, s, g), PORTAL_SPACING, PORTAL_MARGIN, PORTAL_SALT, null);
+}
+
+// ============================================================================
+// PILLAGER OUTPOSTS — 4-story dark-oak watchtower on a cobblestone platform,
+// birch accents, fences, ladders, dark oak slabs/stairs, 8 ominous banners
+// (dark-placed), two iron-bar cages with iron golems (vanilla's golem cages),
+// a loot chest. No pillager mobs (fablecraft has none).
+// ============================================================================
+const OUTPOST_SPACING = 25, OUTPOST_MARGIN = 3, OUTPOST_SALT = 34326452; // margin >= platform half-width (5) is overkill; 3 keeps footprints apart
+const OUTPOST_BIOMES = new Set([2, 3, 4, 5, 7, 8, 9, 13]); // plains..savanna, snowy taiga, meadow
+
+function buildOutpost(wx, wz, seed, gen) {
+  const r = new JRand(0);
+  r.setLargeFeatureSeed(seed, wx, wz);
+  const frand = () => r.next(30) / 1073741824;
+  const cells = [];
+  const bounds = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+  const ents = [];
+  const rot = r.nextInt(4);
+  const FX = [1, -1, 0, 0][rot], FZ = [0, 0, 1, -1][rot];
+  // tower long axis: when facing ±X the 7-long side runs along Z, else along X
+  const W = (a, b) => [a, b]; // local (u,v) -> world; u = long axis, v = short axis
+  const toWorld = (u, v) => (FX !== 0 ? [wx + v, wz + u] : [wx + u, wz + v]);
+  const H = (x, z) => { const hh = gen.heightAt(x, z); return hh >= SEA ? hh : SEA - 1; };
+  const h = H(wx, wz);
+  if (gen.heightAt(wx, wz) < SEA) return { cells, bounds, ents }; // land only (vanilla)
+  const T = B.DARK_OAK_PLANKS, L = B.DARK_OAK_LOG;
+  const DARK = 15; // banner meta (black; the ominous banner has no fablecraft tint)
+  const LONG = 7, SHRT = 5; // tower footprint (u: -3..3, v: -2..2)
+  // platform 11x9, tower centred in the middle
+  for (let u = -5; u <= 5; u++) for (let v = -4; v <= 4; v++) {
+    const [x, z] = toWorld(u, v);
+    scPut(cells, bounds, x, h, z, B.COBBLESTONE, 0);
+  }
+  // 3 interior levels (3 high each) + roof: slabs at h, h+4, h+8; roof h+12
+  const S = [h, h + 4, h + 8], ROOF = h + 12;
+  for (let f = 0; f < 3; f++) {
+    for (let u = -3; u <= 3; u++) for (let v = -2; v <= 2; v++) {
+      const [x, z] = toWorld(u, v);
+      scPut(cells, bounds, x, S[f], z, f === 0 ? T : B.DARK_OAK_SLAB, 0);
+      const wall = u === -3 || u === 3 || v === -2 || v === 2;
+      if (wall) for (let y = 1; y <= 3; y++) {
+        const win = y === 2 && Math.abs(u) === 3 && v === 0; // windows on the long faces
+        scPut(cells, bounds, x, S[f] + y, z, win ? B.GLASS : (y === 3 ? T : L), 0);
+      }
+    }
+  }
+  // rooftop slab + fence railings
+  for (let u = -3; u <= 3; u++) for (let v = -2; v <= 2; v++) {
+    const [x, z] = toWorld(u, v);
+    const edge = u === -3 || u === 3 || v === -2 || v === 2;
+    scPut(cells, bounds, x, ROOF, z, edge ? B.DARK_OAK_FENCE : 0);
+  }
+  // pyramidal roof cap: log base + birch plank mid + log ridge (7x5 -> 5x3 -> 3x1)
+  for (let ly = 0; ly <= 2; ly++) {
+    const inset = 1 + ly;
+    for (let u = -3 + inset; u <= 3 - inset; u++) for (let v = -2 + (ly < 2 ? inset : 2); v <= 2 - (ly < 2 ? inset : 2); v++) {
+      const [x, z] = toWorld(u, v);
+      scPut(cells, bounds, x, ROOF + 1 + ly, z, ly === 1 ? B.BIRCH_PLANKS : L, 0);
+    }
+  }
+  // ladders on the back wall, one per level
+  const [bx, bz] = toWorld(-3, 0);
+  for (let f = 0; f < 3; f++) for (let y = 1; y <= 3; y++) scPut(cells, bounds, bx, S[f] + y, bz, B.LADDER, 0);
+  // 8 ominous banners: 2 per level on the front long face + 2 on the roof
+  const [fx0, fz0] = toWorld(3, 0);
+  for (let f = 0; f < 3; f++) {
+    for (const off of [-1, 1]) {
+      const [x, z] = toWorld(3, off);
+      scPut(cells, bounds, x, S[f] + 2, z, B.BANNER, DARK);
+    }
+  }
+  for (const off of [-1, 1]) {
+    const [x, z] = toWorld(3, off);
+    scPut(cells, bounds, x, ROOF + 1, z, B.BANNER, DARK);
+  }
+  void fx0; void fz0;
+  // two golem cages on the platform (3x3x4 iron bars, 1 golem each; vanilla: up to 4)
+  const cageAt = (u, v) => {
+    for (let du = 0; du < 3; du++) for (let dv = 0; dv < 3; dv++) {
+      const cu = u + du, cv = v + dv;
+      if (Math.abs(cu) <= 3 && Math.abs(cv) <= 2) continue; // tower wall forms this part of the cage
+      const [x, z] = toWorld(cu, cv);
+      const edge = du === 0 || du === 2 || dv === 0 || dv === 2;
+      for (let y = 1; y <= 4; y++) scPut(cells, bounds, x, h + y, z, edge ? B.IRON_BARS : 0);
+    }
+    const [gx, gz] = toWorld(u + 1, v + 1);
+    ents.push([0, gx, h + 1, gz, 0]); // iron golem
+  };
+  cageAt(-5, -4);
+  cageAt(3, 2);
+  // loot chest inside the ground floor (table 1)
+  const [chx, chz] = toWorld(1, 1);
+  scPut(cells, bounds, chx, h + 1, chz, B.CHEST, 0);
+  ents.push([13, chx, h + 1, chz, 1]);
+  // campfire + stair seats on the open west deck (vanilla camp furniture)
+  // (kept clear of both cages and the tower wall)
+  if (frand() < 0.8) {
+    const [cx0, cz0] = toWorld(-5, 0);
+    scPut(cells, bounds, cx0, h + 1, cz0, B.CAMPFIRE, 0);
+  }
+  for (const v of [-1, 1]) {
+    const [sx, sz] = toWorld(-4, v);
+    scPut(cells, bounds, sx, h + 1, sz, B.DARK_OAK_STAIRS, 0);
+  }
+  return { cells, bounds, ents };
+}
+
+export function stampOutposts(cx, cz, seed, gen, blocks, meta) {
+  return scStamp(SC.outposts, cx, cz, seed, gen, blocks, meta, (wx, wz, s, g) => buildOutpost(wx, wz, s, g), OUTPOST_SPACING, OUTPOST_MARGIN, OUTPOST_SALT, OUTPOST_BIOMES);
+}
+
+// ============================================================================
+// WOODLAND MANSIONS — 21x21 spruce manor, 4 storeys + pyramidal spruce-stair
+// roof, glass windows, spruce door, purpur-block/pillar interior accents,
+// bookshelves, a loot chest, and 2 witches (vanilla: 2 witches, 14-22 golems;
+// fablecraft places 2 witches, no golems).
+// ============================================================================
+const MANSION_SPACING = 52, MANSION_MARGIN = 10, MANSION_SALT = 33947651; // margin = mansion half-width (10)
+const MANSION_BIOMES = new Set([5, 7, 6, 11]); // taiga, snowy taiga, snowy tundra, mountains
+
+function buildMansion(wx, wz, seed, gen) {
+  const r = new JRand(0);
+  r.setLargeFeatureSeed(seed, wx, wz);
+  const frand = () => r.next(30) / 1073741824;
+  const cells = [];
+  const bounds = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+  const ents = [];
+  const rot = r.nextInt(4);
+  const FX = [1, -1, 0, 0][rot], FZ = [0, 0, 1, -1][rot];
+  const toWorld = (u, v) => (FX !== 0 ? [wx + v, wz + u] : [wx + u, wz + v]);
+  if (gen.heightAt(wx, wz) < SEA) return { cells, bounds, ents }; // never build a mansion over water
+  const h = gen.heightAt(wx, wz);
+  const SL = B.SPRUCE_LOG, SP = B.SPRUCE_PLANKS;
+  const R = 10; // half-size (21x21)
+  // stone foundation corners + purpur floor
+  for (let u = -R; u <= R; u++) for (let v = -R; v <= R; v++) {
+    const [x, z] = toWorld(u, v);
+    const corner = Math.abs(u) === R && Math.abs(v) === R;
+    scPut(cells, bounds, x, h, z, corner ? B.STONE_BRICKS : B.PURPUR_BLOCK, 0);
+  }
+  // 4 storeys: slab floors at h+1, h+5, h+9, h+13; walls 4 high on the boundary
+  const S = [h + 1, h + 5, h + 9, h + 13];
+  // clear the full interior volume first (removes any terrain/trees/ores left inside)
+  for (let u = -R + 1; u <= R - 1; u++) for (let v = -R + 1; v <= R - 1; v++) {
+    const [x, z] = toWorld(u, v);
+    for (let y = S[0]; y <= S[3] + 3; y++) scPut(cells, bounds, x, y, z, 0);
+  }
+  // purpur interior floor slabs (written after the clear so they survive it)
+  for (let f = 1; f < 4; f++) for (let u = -R; u <= R; u++) for (let v = -R; v <= R; v++) {
+    const [x, z] = toWorld(u, v);
+    scPut(cells, bounds, x, S[f] - 1, z, B.PURPUR_BLOCK, 0);
+  }
+  // walls
+  for (let f = 0; f < 4; f++) {
+    for (let u = -R; u <= R; u++) for (let v = -R; v <= R; v++) {
+      const wall = u === -R || u === R || v === -R || v === R;
+      if (!wall) continue;
+      const [x, z] = toWorld(u, v);
+      for (let y = 0; y <= 3; y++) {
+        const isWin = (y === 1 || y === 2) && ((Math.abs(u) === R ? v : u) % 3 !== 0);
+        scPut(cells, bounds, x, S[f] + y, z, isWin ? B.GLASS : (y === 3 ? SP : SL), 0);
+      }
+    }
+  }
+  // front door (bottom storey, on the +v wall): door block + air above
+  const [dx, dz] = toWorld(0, R);
+  scPut(cells, bounds, dx, S[0], dz, B.DOOR_SPRUCE, 0);
+  scPut(cells, bounds, dx, S[0] + 1, dz, 0);
+  // interior: purpur pillars (full storey height), bookshelves, a chest (table 2), crafting table
+  for (const [pu, pv] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) {
+    const [x, z] = toWorld(pu, pv);
+    for (let y = 0; y <= 3; y++) scPut(cells, bounds, x, S[0] + y, z, B.PURPUR_PILLAR, 0);
+  }
+  for (let i = 0; i < 6; i++) {
+    const [x, z] = toWorld(-8 + ((i * 3) % 17), -8 + ((i * 5) % 17));
+    scPut(cells, bounds, x, S[0], z, B.BOOKSHELF, 0);
+  }
+  const [chx, chz] = toWorld(4, 4);
+  scPut(cells, bounds, chx, S[0], chz, B.CHEST, 0);
+  ents.push([13, chx, S[0], chz, 2]);
+  const [ct1x, ct1z] = toWorld(-4, 2);
+  scPut(cells, bounds, ct1x, S[0], ct1z, B.CRAFTING_TABLE, 0);
+  // pyramidal spruce-stair roof: 5 concentric rings (21 -> 5), 1 block high each
+  let y = S[3] + 4;
+  for (let rad = R; rad >= 2; rad -= 2) {
+    for (let u = -rad; u <= rad; u++) for (let v = -rad; v <= rad; v++) {
+      if (Math.abs(u) < rad && Math.abs(v) < rad) continue; // ring only
+      const [x, z] = toWorld(u, v);
+      scPut(cells, bounds, x, y, z, B.SPRUCE_STAIRS, 0);
+    }
+    y++;
+  }
+  // roof witch perches: above the roof ring at v=±8 (roof surface there is S[3]+6)
+  for (const [pu, pv] of [[0, R - 2], [0, -R + 2]]) {
+    const [x, z] = toWorld(pu, pv);
+    ents.push([12, x, S[3] + 6, z, 0]); // witch
+  }
+  return { cells, bounds, ents };
+}
+
+export function stampMansions(cx, cz, seed, gen, blocks, meta) {
+  return scStamp(SC.mansions, cx, cz, seed, gen, blocks, meta, (wx, wz, s, g) => buildMansion(wx, wz, s, g), MANSION_SPACING, MANSION_MARGIN, MANSION_SALT, MANSION_BIOMES);
+}
+
+// ============================================================================
+// IGLOOS — snow-block dome, hollow interior, red bed, crafting table, furnace,
+// cauldron, chest (guaranteed golden apple), ~50% chance of a basement level
+// with a villager. A wolf + snow golem ent stand outside (26.3).
+// ============================================================================
+const IGLOO_SPACING = 40, IGLOO_MARGIN = 5, IGLOO_SALT = 19377411; // margin >= dome half-width (4), room for companion ents (6)
+const IGLOO_BIOMES = new Set([6, 7, 11]); // snowy tundra, snowy taiga, mountains
+
+function buildIgloo(wx, wz, seed, gen) {
+  const r = new JRand(0);
+  r.setLargeFeatureSeed(seed, wx, wz);
+  const frand = () => r.next(30) / 1073741824;
+  const cells = [];
+  const bounds = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+  const ents = [];
+  const rot = r.nextInt(4);
+  const FX = [1, -1, 0, 0][rot], FZ = [0, 0, 1, -1][rot];
+  const toWorld = (u, v) => (FX !== 0 ? [wx + v, wz + u] : [wx + u, wz + v]);
+  const H = (x, z) => { const hh = gen.heightAt(x, z); return hh >= SEA ? hh : SEA - 1; };
+  const rawH = gen.heightAt(wx, wz);
+  if (rawH < SEA - 1) return { cells, bounds, ents }; // not on land/ice: skip
+  const h = H(wx, wz);
+  const base = h + 1; // interior floor level (ground top is at h)
+  const RAD = 4, HEIGHT = 5;
+  const basement = frand() < 0.5;
+  // basement nook: a 2x2 corner inside the dome, floor removed and dug 1 into the ground
+  const inNook = (u, v) => basement && u >= 1 && u <= 2 && v >= 1 && v <= 2;
+  // dome: snow shell (outer ring), hollow domed interior, snow floor
+  for (let u = -RAD; u <= RAD; u++) for (let v = -RAD; v <= RAD; v++) {
+    const d2 = u * u + v * v;
+    if (d2 > RAD * RAD) continue;
+    const [x, z] = toWorld(u, v);
+    const f = 1 - d2 / ((RAD + 1) * (RAD + 1));
+    const topY = base + Math.round(HEIGHT * Math.sqrt(Math.max(0, f)));
+    const shell = d2 >= (RAD - 1) * (RAD - 1); // outer 2-wide ring is the wall
+    const nook = inNook(u, v);
+    if (!nook) scPut(cells, bounds, x, base, z, B.SNOW_BLOCK, 0); // floor
+    if (shell) {
+      for (let y = 1; y <= topY - base; y++) scPut(cells, bounds, x, base + y, z, B.SNOW_BLOCK, 0);
+    } else {
+      const ceilY = base + Math.max(3, topY - base);
+      for (let y = 1; y < ceilY - base; y++) scPut(cells, bounds, x, base + y, z, 0); // interior air (clears leftover terrain)
+      scPut(cells, bounds, x, ceilY, z, B.SNOW_BLOCK, 0); // dome ceiling
+    }
+    if (nook) scPut(cells, bounds, x, base - 1, z, 0); // dig the basement into the ground
+  }
+  // entrance tunnel on the front face (1-wide, 2-high)
+  const [ex, ez] = toWorld(0, RAD);
+  scPut(cells, bounds, ex, base + 1, ez, 0);
+  scPut(cells, bounds, ex, base + 2, ez, 0);
+  // interior furniture (all inside the dome interior, d2 <= 8)
+  const put = (u, v, item, meta = 0) => { const [x, z] = toWorld(u, v); scPut(cells, bounds, x, base + 1, z, item, meta); };
+  put(-1, -2, B.BED, 14); // red bed (vanilla igloo)
+  put(2, 0, B.CRAFTING_TABLE);
+  put(0, 2, B.FURNACE);
+  put(-2, -2, B.CAULDRON);
+  const [cx, cz] = toWorld(-1, 1);
+  scPut(cells, bounds, cx, base + 1, cz, B.CHEST, 0);
+  ents.push([13, cx, base + 1, cz, 3]);
+  if (basement) {
+    const [vx, vz] = toWorld(1, 1);
+    ents.push([2, vx, base - 1, vz, 1]); // villager, standing in the nook (feet at base-1)
+  }
+  // outside: wolf + snow golem (26.3 igloo companions), snapped to their column's surface
+  const [owx, owz] = toWorld(0, RAD + 2);
+  ents.push([10, owx, H(owx, owz) + 1, owz, 0]); // wolf
+  const [sgx, sgz] = toWorld(0, -(RAD + 2));
+  ents.push([11, sgx, H(sgx, sgz) + 1, sgz, 0]); // snow golem
+  return { cells, bounds, ents };
+}
+
+export function stampIgloos(cx, cz, seed, gen, blocks, meta) {
+  return scStamp(SC.igloos, cx, cz, seed, gen, blocks, meta, (wx, wz, s, g) => buildIgloo(wx, wz, s, g), IGLOO_SPACING, IGLOO_MARGIN, IGLOO_SALT, IGLOO_BIOMES);
+}
+
+// ============================================================================
+// BURIED TREASURE — 3 chests in a row inside a small stone pocket, buried
+// deep (y 12-24) under a random land column (vanilla: gold ingots/nuggets,
+// occasional emeralds/diamonds — loot table 4).
+// ============================================================================
+const TREASURE_SPACING = 40, TREASURE_MARGIN = 1, TREASURE_SALT = 51233019; // pocket half-width (1)
+
+function buildTreasure(wx, wz, seed, gen) {
+  const r = new JRand(0);
+  r.setLargeFeatureSeed(seed, wx, wz);
+  const cells = [];
+  const bounds = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+  const ents = [];
+  const y = 12 + r.nextInt(13); // deep stone, under any surface
+  // carve a 3x3x2 pocket (stone already surrounds it)
+  for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) {
+    scPut(cells, bounds, wx + u, y + 1, wz + v, 0);
+    scPut(cells, bounds, wx + u, y + 2, wz + v, 0);
+  }
+  // three chests in a row on the pocket floor, each with table-4 loot
+  for (let u = -1; u <= 1; u++) {
+    scPut(cells, bounds, wx + u, y + 1, wz, B.CHEST, 0);
+    ents.push([13, wx + u, y + 1, wz, 4]);
+  }
+  return { cells, bounds, ents };
+}
+
+export function stampTreasures(cx, cz, seed, gen, blocks, meta) {
+  return scStamp(SC.treasures, cx, cz, seed, gen, blocks, meta, (wx, wz, s, g) => buildTreasure(wx, wz, s, g), TREASURE_SPACING, TREASURE_MARGIN, TREASURE_SALT, null);
+}
